@@ -5,6 +5,34 @@
 
 using namespace std;
 
+int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pivotIndex) {
+    double pivotValue = point_pairs[pivotIndex].second;
+    int storeIndex = left;
+    swap(point_pairs[pivotIndex], point_pairs[right]);
+    for (int i = left; i < right; i++) {
+        if (point_pairs[i].second < pivotValue) {
+            swap(point_pairs[storeIndex], point_pairs[i]);
+            storeIndex++;
+        }
+    }
+    swap(point_pairs[right], point_pairs[storeIndex]);
+    return storeIndex;
+}
+
+void quick_select(vector<pair<int,double>>& point_pairs, int k) {
+    // Returns since the points are less or equal to k, but not in order
+    if (point_pairs.size() <= k) return;
+
+    int left = 0, right = point_pairs.size() - 1;
+    while (left <= right) {
+        int pivotIndex = left + (right - left) / 2;
+        pivotIndex = partition(point_pairs, left, right, pivotIndex);
+        if (pivotIndex == k) break;
+        else if (pivotIndex < k) left = pivotIndex + 1;
+        else right = pivotIndex - 1;
+    }
+}
+
 void calculate_distances(const vector<vector<double>>& C, const vector<vector<double>>& Q, vector<vector<double>>& D) {
     int c_points = C.size();    // Number of points in C
     int q_points = Q.size();    // Number of points in Q
@@ -61,34 +89,6 @@ vector<vector<int>> knn_search(const vector<vector<double>>& C, const vector<vec
     }
 
     return nearest_neighbors;
-}
-
-void quick_select(vector<pair<int,double>>& point_pairs, int k) {
-    // Returns since the points are less or equal to k, but not in order
-    if (point_pairs.size() <= k) return;
-
-    int left = 0, right = point_pairs.size() - 1;
-    while (left <= right) {
-        int pivotIndex = left + (right - left) / 2;
-        pivotIndex = partition(point_pairs, left, right, pivotIndex);
-        if (pivotIndex == k) break;
-        else if (pivotIndex < k) left = pivotIndex + 1;
-        else right = pivotIndex - 1;
-    }
-}
-
-int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pivotIndex) {
-    double pivotValue = point_pairs[pivotIndex].second;
-    int storeIndex = left;
-    swap(point_pairs[pivotIndex], point_pairs[right]);
-    for (int i = left; i < right; i++) {
-        if (point_pairs[i].second < pivotValue) {
-            swap(point_pairs[storeIndex], point_pairs[i]);
-            storeIndex++;
-        }
-    }
-    swap(point_pairs[right], point_pairs[storeIndex]);
-    return storeIndex;
 }
 
 // For testing
