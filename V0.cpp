@@ -42,6 +42,20 @@ void calculate_distances(const vector<vector<double>>& C, const vector<vector<do
     vector<vector<double>> Q_squared(q_points, vector<double>(d));          // Vector for Q^2
     vector<double> C_mul_Q(c_points * q_points);                            // Vector for C * Q^T
 
+    // Create a flat vector for C and Q (Used for cblas_dgemm)
+    vector<double> CFlat(c_points * d);
+    vector<double> QFlat(q_points * d);
+    for (int i = 0; i < c_points; ++i) {
+        for (int j = 0; j < d; ++j) {
+            CFlat[i * d + j] = C[i][j];
+        }
+    }
+    for (int i = 0; i < q_points; ++i) {
+        for (int j = 0; j < d; ++j) {
+            QFlat[i * d + j] = Q[i][j];
+        }
+    }
+
     // Calculate C^2
     for (int i = 0; i < c_points; i++) {
         for (int j = 0; j < d; ++j) {
@@ -52,18 +66,18 @@ void calculate_distances(const vector<vector<double>>& C, const vector<vector<do
     // Calculate Q^2T
     for (int i = 0; i < q_points; i++) {
         for (int j = 0; j < d; ++j) {
-            Q_squared[i][j] = Q[i][j] * Q[i][j];
+            Q_squared[j][i] = Q[i][j] * Q[i][j];
         }
     }
 
     // Calculate C*Q^T
-    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, c_points, q_points, d, 1.0, &C[0][0], d, &Q[0][0], d, 0.0, &C_mul_Q[0], q_points);
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, c_points, q_points, d, 1.0, CFlat.data(), d, QFlat.data(), d, 0.0, C_mul_Q.data(), q_points);
 
     // Calculate D using sqrt(C^2 - 2C*Q^T + Q^2T)
     D.resize(c_points, vector<double>(q_points));
     for (int i =0; i < c_points; i++) {
         for (int j = 0; j < q_points; j++) {
-            D[i][j] = sqrt(C_squared[i][j] - 2*C_mul_Q[i*q_points + j] + Q_squared[i][j]);
+            D[i][j] = sqrt(C_squared[i][j] - 2 * C_mul_Q[i * q_points + j] + Q_squared[i][j]);
         }
     }
 }
