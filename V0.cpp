@@ -38,13 +38,12 @@ void calculate_distances(const vector<vector<double>>& C, const vector<vector<do
     int q_points = Q.size();    // Number of points in Q
     int d = C[0].size();        // Number of dimensions in a point
 
-    vector<vector<double>> C_squared(c_points, vector<double>(d, 0.0));     // Vector for C^2
-    vector<vector<double>> Q_squared(q_points, vector<double>(d));          // Vector for Q^2
-    vector<double> C_mul_Q(c_points * q_points);                            // Vector for C * Q^T
+    vector<double> CSquared(c_points);          // Vector for C^2
+    vector<double> QSquared(q_points);          // Vector for Q^2
+    vector<double> CQT(c_points * q_points);    // Vector for C * Q^T
 
     // Create a flat vector for C and Q (Used for cblas_dgemm)
-    vector<double> CFlat(c_points * d);
-    vector<double> QFlat(q_points * d);
+    vector<double> CFlat(c_points * d), QFlat(q_points * d);
     for (int i = 0; i < c_points; ++i) {
         for (int j = 0; j < d; ++j) {
             CFlat[i * d + j] = C[i][j];
@@ -58,34 +57,37 @@ void calculate_distances(const vector<vector<double>>& C, const vector<vector<do
 
     // Calculate C^2
     for (int i = 0; i < c_points; i++) {
+        double sum = 0.0;
         for (int j = 0; j < d; ++j) {
-            C_squared[i][j] = C[i][j] * C[i][j];
+            sum += C[i][j] * C[i][j];
         }
+        CSquared[i] = sum;
     }
 
-    // Calculate Q^2T
+    // Calculate Q^2
     for (int i = 0; i < q_points; i++) {
+        double sum = 0.0;
         for (int j = 0; j < d; ++j) {
-            Q_squared[j][i] = Q[i][j] * Q[i][j];
+            sum += Q[i][j] * Q[i][j];
         }
+        QSquared[i] = sum;
     }
 
     // Calculate C*Q^T
-    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, c_points, q_points, d, 1.0, CFlat.data(), d, QFlat.data(), d, 0.0, C_mul_Q.data(), q_points);
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, c_points, q_points, d, 1.0, CFlat.data(), d, QFlat.data(), d, 0.0, CQT.data(), q_points);
 
     // Calculate D using sqrt(C^2 - 2C*Q^T + Q^2T)
     D.resize(c_points, vector<double>(q_points));
     for (int i =0; i < c_points; i++) {
         for (int j = 0; j < q_points; j++) {
-            D[i][j] = sqrt(C_squared[i][j] - 2 * C_mul_Q[i * q_points + j] + Q_squared[i][j]);
+            D[i][j] = sqrt(CSquared[i] + QSquared[j] - 2 * CQT[i * q_points + j]);
         }
     }
 }
 
-vector<vector<int>> knn_search(const vector<vector<double>>& C, const vector<vector<double>>& Q, char o, int k) {
-    if (o != 'k') k = 1;
+vector<vector<double>> knn_search(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
     vector<vector<double>> D;
-    vector<vector<int>> nearest_neighbors(Q.size());
+    vector<vector<double>> nearest_neighbors(Q.size());
     calculate_distances(C, Q, D);
 
     for (int i = 0; i < Q.size(); i++) {
@@ -96,6 +98,11 @@ vector<vector<int>> knn_search(const vector<vector<double>>& C, const vector<vec
 
         quick_select(point_pairs, k);
         
+        for (const auto& pair : point_pairs) {
+            cout << "(" << pair.first << ", " << pair.second << ") ";
+        }
+        cout << endl;
+
         nearest_neighbors[i].resize(k);
         for (int j = 0; j < k; j++) {
             nearest_neighbors[i][j] = point_pairs[j].first;
@@ -108,23 +115,26 @@ vector<vector<int>> knn_search(const vector<vector<double>>& C, const vector<vec
 // For testing
 int main() {
     vector<vector<double>> C = {
-        {1, 2, 3},
-        {4, 5, 6},
-        {7, 8, 9}
+        {1.0, 2.0},
+        {2.5, 1.4},
+        {4.0, 5.0}
     };
     vector<vector<double>> Q = {
-        {1, 2, 3},
-        {4, 5, 6},
-        {7, 8, 9}
+        {1.5, 2.5},
+        {4.0, 5.0},
     };
     vector<vector<double>> D;
 
-    calculate_distances(C, Q, D);
+    // Perform k-NN search
+    int k = 2;
+    vector<vector<double>> nearest_neighbors = knn_search(C, Q, k);
 
-    //Print D
-    for (int i = 0; i < D.size(); i++) {
-        for (int j = 0; j < D[0].size(); j++) {
-            cout << D[i][j] << " ";
+    // Print nearest neighbors
+    cout << "Nearest neighbors:" << endl;
+    for (int i = 0; i < nearest_neighbors.size(); i++) {
+        cout << "Query point " << i << ": ";
+        for (int j = 0; j < nearest_neighbors[i].size(); j++) {
+            cout << nearest_neighbors[i][j] << " ";
         }
         cout << endl;
     }
