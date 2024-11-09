@@ -1,7 +1,9 @@
 #include <iostream>
 #include <vector>
-#include <cmath>
+//#include <cmath>
 #include <cblas.h>
+#include <random>
+#include <chrono>
 
 using namespace std;
 
@@ -112,27 +114,39 @@ pair<vector<vector<int>>, vector<vector<double>>> knn_search(const vector<vector
 
 // For testing
 int main() {
-    vector<vector<double>> C = {
-        {1.0, 2.0},
-        {2.5, 1.4},
-        {4.0, 5.0}
-    };
-    vector<vector<double>> Q = {
-        {1.5, 2.5},
-        {4.0, 5.0},
-    };
-
-    // Perform k-NN search
-    int k = 2;
-    auto [idx, dist] = knn_search(C, Q, k);
-
-    // Display results
-    for (int i = 0; i < idx.size(); i++) {
-        std::cout << "Query " << i << ":\n";
-        for (int j = 0; j < k; j++) {
-            std::cout << "Neighbor " << j << ": index = " << idx[i][j] << ", distance = " << dist[i][j] << "\n";
+    // Generate random points for C and Q
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_real_distribution<> dis(0.0, 10.0);
+    vector<vector<double>> C(500000, vector<double>(5));
+    vector<vector<double>> Q(500, vector<double>(5));
+    for (auto& point : C) {
+        for (auto& coord : point) {
+            coord = dis(gen);
         }
     }
+    for (auto& point : Q) {
+        for (auto& coord : point) {
+            coord = dis(gen);
+        }
+    }
+
+    // Perform k-NN search while measuring time
+    int k=2;
+    auto start = chrono::high_resolution_clock::now();
+    auto [idx, dist] = knn_search(C, Q, k);
+    auto end = chrono::high_resolution_clock::now();
+    chrono::duration<double> elapsed = end - start;
+
+    cout << "k-NN search took " << elapsed.count() << " seconds.\n";
+
+    // Display results
+    //for (int i = 0; i < idx.size(); i++) {
+    //    std::cout << "Query " << i << ":\n";
+    //    for (int j = 0; j < k; j++) {
+    //        std::cout << "Neighbor " << j << ": index = " << idx[i][j] << ", distance = " << dist[i][j] << "\n";
+    //    }
+    //}
 
     return 0;
 }
