@@ -1,10 +1,59 @@
 #include <iostream>
 #include <vector>
 #include <cblas.h>
+#include "mat.h"
+
+// Libraries to calculate the time
 #include <random>
 #include <chrono>
 
 using namespace std;
+
+void ExportResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
+    int numRows = idx.size();
+    int numCols = idx[0].size();
+
+    // Open .mat file
+    MATFile *pmat = matOpen("results.mat", "w");
+    if (pmat == nullptr) {
+        cerr << "Error creating file results.mat" << endl;
+        return -1;
+    }
+
+    // Create MATLAB arrays for idx and dist
+    mxArray *idxArray = mxCreateDoubleMatrix(numRows, numCols, mxREAL);
+    mxArray *distArray = mxCreateDoubleMatrix(numRows, numCols, mxREAL);
+
+    // Copy data into mxArrays
+    double *idxPtr = mxGetPr(idxArray);
+    double *distPtr = mxGetPr(distArray);
+
+    // Populate mxArrays with values from idx and dist
+    for (int i = 0; i < numRows; i++) {
+        for (int j = 0; j < numCols; j++) {
+            idxPtr[i + j*numRows] = static_cast<double>(idx[i][j]);
+            distPtr[i + j*numRows] = dist[i][j];
+        }
+    }
+
+    // Write arrays to .mat file
+    matPutVariable(pmat, "idx", idxArray);
+    matPutVariable(pmat, "dist", distArray);
+
+    // Clean up
+    mxDestroyArray(idxArray);
+    mxDestroyArray(distArray);
+    matClose(pmat);
+}
+
+void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
+    for (int i = 0; i < idx.size(); i++) {
+        std::cout << "Query " << i << ":\n";
+        for (int j = 0; j < idx[i].size(); j++) {
+            std::cout << "Neighbor " << j << ": index = " << idx[i][j] << ", distance = " << dist[i][j] << "\n";
+        }
+    }
+}
 
 int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pivotIndex) {
     double pivotValue = point_pairs[pivotIndex].second;
@@ -139,13 +188,9 @@ int main() {
 
     cout << "k-NN search took " << elapsed.count() << " seconds.\n";
 
-    // Display results
-    //for (int i = 0; i < idx.size(); i++) {
-    //    std::cout << "Query " << i << ":\n";
-    //    for (int j = 0; j < k; j++) {
-    //        std::cout << "Neighbor " << j << ": index = " << idx[i][j] << ", distance = " << dist[i][j] << "\n";
-    //    }
-    //}
+    //printResults(idx, dist);
+    
+    ExportResults(idx, dist);
 
     return 0;
 }
