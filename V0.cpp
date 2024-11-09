@@ -1,7 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <cblas.h>
-#include "mat.h"
+#include "/mnt/c/Program Files/MATLAB/R2024b/extern/include/mat.h"
 
 // Libraries to calculate the time
 #include <random>
@@ -17,7 +17,7 @@ void ExportResults(const vector<vector<int>>& idx, const vector<vector<double>>&
     MATFile *pmat = matOpen("results.mat", "w");
     if (pmat == nullptr) {
         cerr << "Error creating file results.mat" << endl;
-        return -1;
+        return;
     }
 
     // Create MATLAB arrays for idx and dist
