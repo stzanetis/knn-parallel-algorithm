@@ -1,10 +1,50 @@
 #include <iostream>
 #include <vector>
 #include <cblas.h>
+#include "/mnt/c/Program Files/MATLAB/R2024b/extern/include/mat.h"
+
+// Libraries to calculate the time
 #include <random>
 #include <chrono>
 
 using namespace std;
+
+void ExportResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
+    int numRows = idx.size();
+    int numCols = idx[0].size();
+
+    // Open .mat file
+    MATFile *pmat = matOpen("results.mat", "w");
+    if (pmat == nullptr) {
+        cerr << "Error creating file results.mat" << endl;
+        return;
+    }
+
+    // Create MATLAB arrays for idx and dist
+    mxArray *idxArray = mxCreateDoubleMatrix(numRows, numCols, mxREAL);
+    mxArray *distArray = mxCreateDoubleMatrix(numRows, numCols, mxREAL);
+
+    // Copy data into mxArrays
+    double *idxPtr = mxGetPr(idxArray);
+    double *distPtr = mxGetPr(distArray);
+
+    // Populate mxArrays with values from idx and dist
+    for (int i = 0; i < numRows; i++) {
+        for (int j = 0; j < numCols; j++) {
+            idxPtr[i + j*numRows] = static_cast<double>(idx[i][j]);
+            distPtr[i + j*numRows] = dist[i][j];
+        }
+    }
+
+    // Write arrays to .mat file
+    matPutVariable(pmat, "idx", idxArray);
+    matPutVariable(pmat, "dist", distArray);
+
+    // Clean up
+    mxDestroyArray(idxArray);
+    mxDestroyArray(distArray);
+    matClose(pmat);
+}
 
 void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
     for (int i = 0; i < idx.size(); i++) {
@@ -149,6 +189,8 @@ int main() {
     cout << "k-NN search took " << elapsed.count() << " seconds.\n";
 
     //printResults(idx, dist);
+    
+    ExportResults(idx, dist);
 
     return 0;
 }
