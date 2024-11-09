@@ -85,9 +85,10 @@ void calculate_distances(const vector<vector<double>>& C, const vector<vector<do
     }
 }
 
-vector<vector<double>> knn_search(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
+pair<vector<vector<int>>, vector<vector<double>>> knn_search(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
     vector<vector<double>> D;
-    vector<vector<double>> nearest_neighbors(Q.size());
+    vector<vector<int>> idx(Q.size());
+    vector<vector<double>> dist(Q.size());
     calculate_distances(C, Q, D);
 
     for (int i = 0; i < Q.size(); i++) {
@@ -95,21 +96,18 @@ vector<vector<double>> knn_search(const vector<vector<double>>& C, const vector<
         for (int j = 0; j < C.size(); j++) {
             point_pairs.emplace_back(j, D[j][i]);
         }
-
+        
         quick_select(point_pairs, k);
         
-        for (const auto& pair : point_pairs) {
-            cout << "(" << pair.first << ", " << pair.second << ") ";
-        }
-        cout << endl;
-
-        nearest_neighbors[i].resize(k);
+        idx[i].resize(k);
+        dist[i].resize(k);
         for (int j = 0; j < k; j++) {
-            nearest_neighbors[i][j] = point_pairs[j].first;
+            idx[i][j] = point_pairs[j].first;
+            dist[i][j] = point_pairs[j].second;
         }
     }
 
-    return nearest_neighbors;
+    return {idx, dist};
 }
 
 // For testing
@@ -123,20 +121,17 @@ int main() {
         {1.5, 2.5},
         {4.0, 5.0},
     };
-    vector<vector<double>> D;
 
     // Perform k-NN search
     int k = 2;
-    vector<vector<double>> nearest_neighbors = knn_search(C, Q, k);
+    auto [idx, dist] = knn_search(C, Q, k);
 
-    // Print nearest neighbors
-    cout << "Nearest neighbors:" << endl;
-    for (int i = 0; i < nearest_neighbors.size(); i++) {
-        cout << "Query point " << i << ": ";
-        for (int j = 0; j < nearest_neighbors[i].size(); j++) {
-            cout << nearest_neighbors[i][j] << " ";
+    // Display results
+    for (int i = 0; i < idx.size(); i++) {
+        std::cout << "Query " << i << ":\n";
+        for (int j = 0; j < k; j++) {
+            std::cout << "Neighbor " << j << ": index = " << idx[i][j] << ", distance = " << dist[i][j] << "\n";
         }
-        cout << endl;
     }
 
     return 0;
