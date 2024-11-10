@@ -1,50 +1,13 @@
 #include <iostream>
 #include <vector>
 #include <cblas.h>
-#include "/mnt/c/Program Files/MATLAB/R2024b/extern/include/mat.h"
+#include <H5Cpp.h>
 
-// Libraries to calculate the time
+// For testing
 #include <random>
 #include <chrono>
 
 using namespace std;
-
-void ExportResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
-    int numRows = idx.size();
-    int numCols = idx[0].size();
-
-    // Open .mat file
-    MATFile *pmat = matOpen("results.mat", "w");
-    if (pmat == nullptr) {
-        cerr << "Error creating file results.mat" << endl;
-        return;
-    }
-
-    // Create MATLAB arrays for idx and dist
-    mxArray *idxArray = mxCreateDoubleMatrix(numRows, numCols, mxREAL);
-    mxArray *distArray = mxCreateDoubleMatrix(numRows, numCols, mxREAL);
-
-    // Copy data into mxArrays
-    double *idxPtr = mxGetPr(idxArray);
-    double *distPtr = mxGetPr(distArray);
-
-    // Populate mxArrays with values from idx and dist
-    for (int i = 0; i < numRows; i++) {
-        for (int j = 0; j < numCols; j++) {
-            idxPtr[i + j*numRows] = static_cast<double>(idx[i][j]);
-            distPtr[i + j*numRows] = dist[i][j];
-        }
-    }
-
-    // Write arrays to .mat file
-    matPutVariable(pmat, "idx", idxArray);
-    matPutVariable(pmat, "dist", distArray);
-
-    // Clean up
-    mxDestroyArray(idxArray);
-    mxDestroyArray(distArray);
-    matClose(pmat);
-}
 
 void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
     for (int i = 0; i < idx.size(); i++) {
@@ -162,12 +125,18 @@ pair<vector<vector<int>>, vector<vector<double>>> knn_search(const vector<vector
 
 // For testing
 int main() {
-    // Generate random points for C and Q
+    int k = 2;
+    int c = 500000; // Number of points for Corpus
+    int q = 500;    // Number of Queries
+    int d = 5;      // Dimensions
+
+    // Generate random C and Q matrices
     random_device rd;
     mt19937 gen(rd());
     uniform_real_distribution<> dis(0.0, 10.0);
-    vector<vector<double>> C(500000, vector<double>(5));
-    vector<vector<double>> Q(500, vector<double>(5));
+
+    vector<vector<double>> C(c, vector<double>(5));
+    vector<vector<double>> Q(q, vector<double>(5));
     for (auto& point : C) {
         for (auto& coord : point) {
             coord = dis(gen);
@@ -180,17 +149,14 @@ int main() {
     }
 
     // Perform k-NN search while measuring time
-    int k=2;
     auto start = chrono::high_resolution_clock::now();
     auto [idx, dist] = knn_search(C, Q, k);
     auto end = chrono::high_resolution_clock::now();
     chrono::duration<double> elapsed = end - start;
 
-    cout << "k-NN search took " << elapsed.count() << " seconds.\n";
+    cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
 
     //printResults(idx, dist);
-    
-    ExportResults(idx, dist);
 
     return 0;
 }
