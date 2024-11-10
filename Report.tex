@@ -1,0 +1,44 @@
+\documentclass[12pt]{report}
+
+% Import packages
+\usepackage{graphicx}  % For including images
+\usepackage{amsmath}   % For advanced math formatting
+\usepackage{hyperref}  % For creating hyperlinks
+\usepackage{geometry}  % To set page margins
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}  % Makes sans-serif the default font
+\geometry{a4paper, margin=1in}
+
+\begin{document}
+
+\title{\textbf{k Nearest Neighbors - kNN}}
+\author{Savvas Tzanetis}
+\maketitle  % Creates the title
+
+\tableofcontents  % Generates the table of contents
+
+\chapter{Introduction}
+This project is part of an assignment in Parallel and distributed systems class of the Aristotle University of Thessaloniki. The assignment requires implementing a \textbf{k-NN} algorithm to find the\textbf{ k nearest neighbors} of a set of points from a Query data set, relative to a Corpus data set in a high-dimensional space. This algorithm, implemented in the \textbf{C++} language, given a set of M-points from a Corpus data set and N-points from a Query data set, both in the same D-dimensional space, identifies the k-nearest neighbors of each query point. Using optimized matrix operations as well as the \textbf{OpenBLAS} library, this algorithm handles high-dimensional distance calculations efficiently.
+
+\section{Problem Analysis}
+The objective of the assignment is to implement a subroutine in \textbf{C++} that computes the \textbf{k nearest neighbors} of each query point in \textbf{Q(Query set)} relative to a set of points in \textbf{C(Corpus set)} based on their distances, using a multitude of tools for implementing a parallel implementation as well as a version using serial computing.
+
+\chapter{Serial Version V0}
+In this chapter, we explain the methods used in the project.
+
+\chapter{Parallel Version}
+In this chapter, we present the results.
+
+\section{Using OpenMP}
+Description of the first experiment and results.
+
+\section{Using OpenCILK}
+Description of the first experiment and results.
+
+\section{Using PTHREADS}
+Description of the first experiment and results.
+
+\chapter{Conclusion}
+Summarize the findings and conclude the report.
+
+\end{document}
