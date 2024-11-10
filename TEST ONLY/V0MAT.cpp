@@ -123,29 +123,123 @@ pair<vector<vector<int>>, vector<vector<double>>> knn_search(const vector<vector
     return {idx, dist};
 }
 
+void exportResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
+    hsize_t queries = idx.size();
+    hsize_t k = idx[0].size();
+    hsize_t dims[2] = {queries, k};
+
+    try {
+        // Create a new HDF5 file
+        H5::H5File file("results.h5", H5F_ACC_TRUNC);
+
+        // Create idx dataset
+        H5::DataSpace dataspace(2, dims);
+        H5::DataSet dataset_idx = file.createDataSet("idx", H5::PredType::NATIVE_INT, dataspace);
+        vector<int> flat_idx;
+        for (const auto& row : idx) {
+            flat_idx.insert(flat_idx.end(), row.begin(), row.end());
+        }
+        dataset_idx.write(flat_idx.data(), H5::PredType::NATIVE_INT);
+
+        // Create dist dataset
+        H5::DataSet dataset_dist = file.createDataSet("dist", H5::PredType::NATIVE_DOUBLE, dataspace);
+        vector<double> flat_dist;
+        for (const auto& row : dist) {
+            flat_dist.insert(flat_dist.end(), row.begin(), row.end());
+        }
+        dataset_dist.write(flat_dist.data(), H5::PredType::NATIVE_DOUBLE);
+
+        cout << "Results exported to results.h5" << endl;
+
+        // Close the file
+        file.close();
+    } catch (H5::Exception& error) {
+        cerr << "Error: " << error.getDetailMsg() << endl;
+    }
+}
+
+void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
+    try {
+        // Open the HDF5 file
+        cout << "Enter the filename: ";
+        string filename;
+        cin >> filename;
+        H5::H5File file(filename, H5F_ACC_RDONLY);
+
+        // Read C dataset
+        H5::DataSet dataset_C = file.openDataSet("C");
+        H5::DataSpace dataspace_C = dataset_C.getSpace();
+        hsize_t dims_C[2];
+        dataspace_C.getSimpleExtentDims(dims_C, NULL);
+        C.resize(dims_C[0], vector<double>(dims_C[1]));
+        dataset_C.read(C[0].data(), H5::PredType::NATIVE_DOUBLE);
+
+        // Read Q dataset
+        H5::DataSet dataset_Q = file.openDataSet("Q");
+        H5::DataSpace dataspace_Q = dataset_Q.getSpace();
+        hsize_t dims_Q[2];
+        dataspace_Q.getSimpleExtentDims(dims_Q, NULL);
+        Q.resize(dims_Q[0], vector<double>(dims_Q[1]));
+        dataset_Q.read(Q[0].data(), H5::PredType::NATIVE_DOUBLE);
+
+        cout << "Data imported from data.h5" << endl;
+
+        // Close the file
+        file.close();
+    } catch (H5::Exception& error) {
+        cerr << "Error: " << error.getDetailMsg() << endl;
+    }
+}
+
 // For testing
 int main() {
     int k = 2;
-    int c = 500000; // Number of points for Corpus
-    int q = 500;    // Number of Queries
-    int d = 5;      // Dimensions
+    int c = 5000; // Number of points for Corpus
+    int q = 50;    // Number of Queries
+    int d = 3;      // Dimensions
 
-    // Generate random C and Q matrices
-    random_device rd;
-    mt19937 gen(rd());
-    uniform_real_distribution<> dis(0.0, 10.0);
+    vector<vector<double>> C, Q;
 
-    vector<vector<double>> C(c, vector<double>(5));
-    vector<vector<double>> Q(q, vector<double>(5));
-    for (auto& point : C) {
-        for (auto& coord : point) {
-            coord = dis(gen);
+    int option;
+    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect and option: ";
+    cin >> option;
+
+    if (option == 1) {
+        importData(C, Q);
+    } else if (option == 2) {
+        // Generate random C and Q matrices
+        random_device rd;
+        mt19937 gen(rd());
+        uniform_real_distribution<> dis(0.0, 10.0);
+        vector<vector<double>> C(c, vector<double>(5));
+        vector<vector<double>> Q(q, vector<double>(5));
+        for (auto& point : C) {
+            for (auto& coord : point) {
+                coord = dis(gen);
+            }
         }
-    }
-    for (auto& point : Q) {
-        for (auto& coord : point) {
-            coord = dis(gen);
+        for (auto& point : Q) {
+            for (auto& coord : point) {
+                coord = dis(gen);
+            }
         }
+    } else if(option == 3) {
+        C = {
+            {1.0, 2.0},
+            {4.0, 5.0},
+            {7.0, 8.0},
+            {10.0, 11.0},
+            {13.0, 14.0}
+        };
+
+        Q = {
+            {1.1, 2.6},
+            {4.5, 5.2},
+            {11.0, 8.0}
+        };
+    }   else {
+        cout << "Invalid option" << endl;
+        return 1;
     }
 
     // Perform k-NN search while measuring time
@@ -156,7 +250,8 @@ int main() {
 
     cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
 
-    //printResults(idx, dist);
+    printResults(idx, dist);
+    exportResults(idx, dist);
 
     return 0;
 }
