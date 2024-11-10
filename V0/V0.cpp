@@ -122,12 +122,18 @@ pair<vector<vector<int>>, vector<vector<double>>> knn_search(const vector<vector
 
 // For testing
 int main() {
-    // Generate random points for C and Q
+    int k = 2;
+    int c = 500000; // Number of points for Corpus
+    int q = 500;    // Number of Queries
+    int d = 5;      // Dimensions
+
+    // Generate random C and Q matrices
     random_device rd;
     mt19937 gen(rd());
     uniform_real_distribution<> dis(0.0, 10.0);
-    vector<vector<double>> C(500000, vector<double>(5));
-    vector<vector<double>> Q(500, vector<double>(5));
+
+    vector<vector<double>> C(c, vector<double>(5));
+    vector<vector<double>> Q(q, vector<double>(5));
     for (auto& point : C) {
         for (auto& coord : point) {
             coord = dis(gen);
@@ -140,13 +146,12 @@ int main() {
     }
 
     // Perform k-NN search while measuring time
-    int k=2;
     auto start = chrono::high_resolution_clock::now();
     auto [idx, dist] = knn_search(C, Q, k);
     auto end = chrono::high_resolution_clock::now();
     chrono::duration<double> elapsed = end - start;
 
-    cout << "k-NN search took " << elapsed.count() << " seconds.\n";
+    cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
 
     //printResults(idx, dist);
 
