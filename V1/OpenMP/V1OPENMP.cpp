@@ -96,31 +96,62 @@ void quick_select(vector<pair<int,double>>& point_pairs, int k) {
     }
 }
 
-void knn_recursive(const std::vector<std::vector<double>>& C, 
-                   const std::vector<std::vector<double>>& Q, 
-                   int k, 
-                   std::vector<std::vector<int>>& idx, 
-                   std::vector<std::vector<double>>& dist, 
-                   int start, 
-                   int end) {
-    // Υπολογισμός των αποστάσεων για το υποσύνολο των σημείων
+void knn_recursive(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k, vector<vector<int>>& idx, vector<vector<double>>& dist, int start, int end) {
+    if (start >= end) return;
+
+    int q_points = end - start;
+    int c_points = C.size();
+    int d = C[0].size();
+
+    vector<vector<double>> D;
+    calculate_distances(C, vector<vector<double>>(Q.begin() + start, Q.begin() + end), D);
+
     #pragma omp parallel for
-    for (int i = start; i < end; i++) {
-        std::vector<std::pair<double, int>> distances;
-        for (size_t j = 0; j < C.size(); j++) {
-            double dist = compute_distance(C[j], Q[i]);
-            distances.push_back({dist, j});
+    for (int i = 0; i < q_points; ++i) {
+        vector<pair<int, double>> point_pairs(c_points);
+        for (int j = 0; j < c_points; ++j) {
+            point_pairs[j] = {j, D[j][i]};
         }
 
-        // Quickselect για να βρούμε τους k κοντινότερους γείτονες
-        quick_select(distances, k);
+        quick_select(point_pairs, k);
 
-        // Αποθήκευση των αποτελεσμάτων
-        for (int j = 0; j < k; j++) {
-            idx[i][j] = distances[j].second;
-            dist[i][j] = distances[j].first;
+        for (int j = 0; j < k; ++j) {
+            idx[start + i][j] = point_pairs[j].first;
+            dist[start + i][j] = point_pairs[j].second;
         }
     }
+}
+
+void project_to_lower_dimension(const vector<vector<double>>& input, vector<vector<double>>& output, int new_dim) {
+    int points = input.size();
+    int old_dim = input[0].size();
+
+    // Random projection matrix
+    vector<vector<double>> projection_matrix(old_dim, vector<double>(new_dim));
+    for (int i = 0; i < old_dim; ++i) {
+        for (int j = 0; j < new_dim; ++j) {
+            projection_matrix[i][j] = ((double) rand() / (RAND_MAX));
+        }
+    }
+
+    // Project input to lower dimension
+    output.resize(points, vector<double>(new_dim));
+    for (int i = 0; i < points; ++i) {
+        for (int j = 0; j < new_dim; ++j) {
+            output[i][j] = 0.0;
+            for (int k = 0; k < old_dim; ++k) {
+                output[i][j] += input[i][k] * projection_matrix[k][j];
+            }
+        }
+    }
+}
+
+void knn_approximate(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k, vector<vector<int>>& idx, vector<vector<double>>& dist, int new_dim) {
+    vector<vector<double>> C_proj, Q_proj;
+    project_to_lower_dimension(C, C_proj, new_dim);
+    project_to_lower_dimension(Q, Q_proj, new_dim);
+
+    knn_recursive(C_proj, Q_proj, k, idx, dist, 0, Q_proj.size());
 }
 
 // For testing
@@ -148,7 +179,7 @@ int main() {
     std::vector<std::vector<int>> idx(q, std::vector<int>(k));
     std::vector<std::vector<double>> dist(q, std::vector<double>(k));
     auto start = omp_get_wtime();
-    knn_recursive(C, Q, k, idx, dist, 0, q);
+    knn_approximate(C, Q, k, idx, dist, 5);
     auto end = omp_get_wtime();
 
     std::cout << "knnsearch took " << (end - start) << " seconds" << std::endl;
