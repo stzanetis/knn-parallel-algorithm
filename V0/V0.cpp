@@ -194,9 +194,9 @@ void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
 // For testing
 int main() {
     int k = 2;
-    int c = 5000; // Number of points for Corpus
-    int q = 50;    // Number of Queries
-    int d = 3;      // Dimensions
+    int c = 70000;       // Number of points for Corpus
+    int q = 600;         // Number of Queries
+    int d = 30;          // Dimensions
 
     vector<vector<double>> C, Q;
 
@@ -211,8 +211,8 @@ int main() {
         random_device rd;
         mt19937 gen(rd());
         uniform_real_distribution<> dis(0.0, 10.0);
-        vector<vector<double>> C(c, vector<double>(5));
-        vector<vector<double>> Q(q, vector<double>(5));
+        C.resize(c, vector<double>(d));
+        Q.resize(q, vector<double>(d));
         for (auto& point : C) {
             for (auto& coord : point) {
                 coord = dis(gen);
@@ -250,7 +250,7 @@ int main() {
 
     cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
 
-    printResults(idx, dist);
+    //printResults(idx, dist);
     exportResults(idx, dist);
 
     return 0;
