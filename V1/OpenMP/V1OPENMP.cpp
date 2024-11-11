@@ -1,7 +1,6 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <algorithm>
 #include <omp.h>
 #include <cblas.h>
 
@@ -16,7 +15,7 @@ void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& 
     }
 }
 
-void calculate_distances(const vector<vector<double>>& C, const vector<vector<double>>& Q, vector<vector<double>>& D) {
+void calculateDistances(const vector<vector<double>>& C, const vector<vector<double>>& Q, vector<vector<double>>& D) {
     int c_points = C.size();    // Number of points in C
     int q_points = Q.size();    // Number of points in Q
     int d = C[0].size();        // Number of dimensions in a point
@@ -82,7 +81,7 @@ int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pi
     return storeIndex;
 }
 
-void quick_select(vector<pair<int,double>>& point_pairs, int k) {
+void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
     // Returns since the points are less or equal to k, but not in order
     if (point_pairs.size() <= k) return;
 
@@ -96,35 +95,33 @@ void quick_select(vector<pair<int,double>>& point_pairs, int k) {
     }
 }
 
-void knn_recursive(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k, vector<vector<int>>& idx, vector<vector<double>>& dist, int start, int end) {
-    if (start >= end) return;
-
-    int q_points = end - start;
-    int c_points = C.size();
-    int d = C[0].size();
-
+void knnSearch(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k, vector<vector<int>>& idx, vector<vector<double>>& dist) {
     vector<vector<double>> D;
-    calculate_distances(C, vector<vector<double>>(Q.begin() + start, Q.begin() + end), D);
+    calculateDistances(C, Q, D);
 
-    #pragma omp parallel for
-    for (int i = 0; i < q_points; ++i) {
-        vector<pair<int, double>> point_pairs(c_points);
-        for (int j = 0; j < c_points; ++j) {
-            point_pairs[j] = {j, D[j][i]};
+    for (int i = 0; i < Q.size(); i++) {
+        vector<pair<int,double>> point_pairs;
+        for (int j = 0; j < C.size(); j++) {
+            point_pairs.emplace_back(j, D[j][i]);
         }
-
-        quick_select(point_pairs, k);
-
-        for (int j = 0; j < k; ++j) {
-            idx[start + i][j] = point_pairs[j].first;
-            dist[start + i][j] = point_pairs[j].second;
+        
+        quickSelect(point_pairs, k);
+        
+        idx[i].resize(k);
+        dist[i].resize(k);
+        for (int j = 0; j < k; j++) {
+            idx[i][j] = point_pairs[j].first;
+            dist[i][j] = point_pairs[j].second;
         }
     }
 }
 
-void project_to_lower_dimension(const vector<vector<double>>& input, vector<vector<double>>& output, int new_dim) {
+void projectToLowerDimension(const vector<vector<double>>& input, vector<vector<double>>& output) {
     int points = input.size();
     int old_dim = input[0].size();
+
+    // Calculate new_dim automatically to balance speed and accuracy
+    int new_dim = static_cast<int>(sqrt(old_dim));
 
     // Random projection matrix
     vector<vector<double>> projection_matrix(old_dim, vector<double>(new_dim));
@@ -146,20 +143,60 @@ void project_to_lower_dimension(const vector<vector<double>>& input, vector<vect
     }
 }
 
-void knn_approximate(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k, vector<vector<int>>& idx, vector<vector<double>>& dist, int new_dim) {
+pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
     vector<vector<double>> C_proj, Q_proj;
-    project_to_lower_dimension(C, C_proj, new_dim);
-    project_to_lower_dimension(Q, Q_proj, new_dim);
+    vector<vector<int>> idx(Q.size());
+    vector<vector<double>> dist(Q.size());
 
-    knn_recursive(C_proj, Q_proj, k, idx, dist, 0, Q_proj.size());
+    // Project C and Q to lower dimensions
+    auto start = omp_get_wtime();
+    projectToLowerDimension(C, C_proj);
+    projectToLowerDimension(Q, Q_proj);
+    auto end = omp_get_wtime();
+    cout << "Projected to lower dimensions in " << (end - start) << " seconds" << endl;
+
+    int c_points = C_proj.size();
+    int q_points = Q_proj.size();
+    int d = C_proj[0].size();
+    int num_threads = omp_get_max_threads();
+    int chunk_size = (q_points + num_threads - 1) / num_threads;
+    vector<vector<vector<int>>> idx_chunks(num_threads);
+    vector<vector<vector<double>>> dist_chunks(num_threads);
+
+    #pragma omp parallel
+    {
+        int thread_id = omp_get_thread_num();
+        int start = thread_id * chunk_size;
+        int end = min(start + chunk_size, q_points);
+
+        vector<vector<double>> subQ(Q_proj.begin() + start, Q_proj.begin() + end);
+        vector<vector<int>> sub_idx(subQ.size(), vector<int>(k));
+        vector<vector<double>> sub_dist(subQ.size(), vector<double>(k));
+
+        knnSearch(C_proj, subQ, k, sub_idx, sub_dist);
+
+        idx_chunks[thread_id] = sub_idx;
+        dist_chunks[thread_id] = sub_dist;
+    }
+
+    for (int t = 0; t < num_threads; ++t) {
+        int start = t * chunk_size;
+        int end = min(start + chunk_size, q_points);
+        for (int i = start; i < end; ++i) {
+            idx[i] = idx_chunks[t][i - start];
+            dist[i] = dist_chunks[t][i - start];
+        }
+    }
+
+    return {idx, dist};
 }
 
 // For testing
 int main() {
     int k = 2;
-    int n = 100000; // Number of points for Corpus
-    int q = 5000;   // Number of Queries
-    int d = 10;     // Dimensions
+    int n = 70000; // Number of points for Corpus
+    int q = 600;   // Number of Queries
+    int d = 30;     // Dimensions
 
     // Generate random C and Q matrices
     std::vector<std::vector<double>> C(n, std::vector<double>(d));
@@ -176,12 +213,9 @@ int main() {
     }
 
     // Perform k-NN search while measuring time
-    std::vector<std::vector<int>> idx(q, std::vector<int>(k));
-    std::vector<std::vector<double>> dist(q, std::vector<double>(k));
     auto start = omp_get_wtime();
-    knn_approximate(C, Q, k, idx, dist, 5);
+    auto [idx, dist] = knnSearchParallel(C, Q, k);
     auto end = omp_get_wtime();
-
     std::cout << "knnsearch took " << (end - start) << " seconds" << std::endl;
 
     //printResults(idx, dist);
