@@ -5,6 +5,7 @@
 #include <cblas.h>
 #include <random>
 #include <unordered_map>
+#include <ctime>
 
 using namespace std;
 
@@ -40,6 +41,7 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     }
 
     // Calculate C^2
+    //#pragma omp parallel for
     for (int i = 0; i < c_points; i++) {
         double sum = 0.0;
         for (int j = 0; j < d; ++j) {
@@ -49,6 +51,7 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     }
 
     // Calculate Q^2
+    //#pragma omp parallel for
     for (int i = 0; i < q_points; i++) {
         double sum = 0.0;
         for (int j = 0; j < d; ++j) {
@@ -62,9 +65,13 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
 
     // Calculate D using sqrt(C^2 - 2C*Q^T + Q^2T)
     D.resize(c_points, vector<double>(q_points));
+    #pragma omp parallel for
     for (int i =0; i < c_points; i++) {
         for (int j = 0; j < q_points; j++) {
             D[i][j] = CSquared[i] + QSquared[j] - 2 * CQT[i * q_points + j];
+            if (D[i][j] < 0) {
+                D[i][j] = 0;
+            }
         }
     }
 }
@@ -97,140 +104,120 @@ void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
     }
 }
 
-// Function to generate random projection vectors
 vector<vector<double>> generateRandomProjections(int original_dim, int reduced_dim) {
-    default_random_engine generator;
-    normal_distribution<double> distribution(0.0, 1.0);
-
     vector<vector<double>> projections(reduced_dim, vector<double>(original_dim));
-    for (int i = 0; i < reduced_dim; ++i) {
+    for (int i = 0; i < reduced_dim; i++) {
         for (int j = 0; j < original_dim; ++j) {
-            projections[i][j] = distribution(generator);
+            projections[i][j] = (rand()% 2 == 0 ? -1 : 1) / sqrt((double)reduced_dim);
         }
     }
+
     return projections;
 }
 
-// Function to project points onto lower-dimensional space
 vector<vector<double>> projectPoints(const vector<vector<double>>& points, const vector<vector<double>>& projections) {
     int num_points = points.size();
     int reduced_dim = projections.size();
     int original_dim = points[0].size();
 
     vector<vector<double>> projected_points(num_points, vector<double>(reduced_dim));
+    //for (int i = 0; i < num_points; i++) {
+    //    for (int j = 0; j < reduced_dim; j++) {
+    //        double sum = 0.0;
+    //        for (int k = 0; k < original_dim; k++) {
+    //            sum += points[i][k] * projections[j][k];
+    //        }
+    //        projected_points[i][j] = sum;
+    //    }
+    //}
+
+    vector<double> points_flat(num_points * original_dim);
+    vector<double> projections_flat(reduced_dim * original_dim);
+    vector<double> projected_points_flat(num_points * reduced_dim);
+
     for (int i = 0; i < num_points; ++i) {
-        for (int j = 0; j < reduced_dim; ++j) {
-            double projection = 0.0;
-            for (int k = 0; k < original_dim; ++k) {
-                projection += points[i][k] * projections[j][k];
-            }
-            projected_points[i][j] = projection;
+        for (int j = 0; j < original_dim; ++j) {
+            points_flat[i * original_dim + j] = points[i][j];
         }
     }
+
+    for (int i = 0; i < reduced_dim; ++i) {
+        for (int j = 0; j < original_dim; ++j) {
+            projections_flat[i * original_dim + j] = projections[i][j];
+        }
+    }
+
+    // Perform the matrix multiplication using cblas_dgemm
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, num_points, reduced_dim, original_dim, 1.0,
+                points_flat.data(), original_dim, projections_flat.data(), original_dim, 0.0,
+                projected_points_flat.data(), reduced_dim);
+
+    // Convert the flattened result back to a 2D vector
+    for (int i = 0; i < num_points; ++i) {
+        for (int j = 0; j < reduced_dim; ++j) {
+            projected_points[i][j] = projected_points_flat[i * reduced_dim + j];
+        }
+    }
+    
     return projected_points;
 }
 
-// Function to hash points into buckets
-unordered_map<int, vector<int>> hashPoints(const vector<vector<double>>& projected_points, double w) {
-    unordered_map<int, vector<int>> hash_table;
-    for (int i = 0; i < projected_points.size(); ++i) {
-        int hash_value = 0;
-        for (int j = 0; j < projected_points[i].size(); ++j) {
-            hash_value += static_cast<int>(floor(projected_points[i][j] / w));
+pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
+    vector<vector<double>> D;
+    vector<vector<int>> idx(Q.size());
+    vector<vector<double>> dist(Q.size());
+    calculateDistances(C, Q, D);
+
+    for (int i = 0; i < Q.size(); i++) {
+        vector<pair<int,double>> point_pairs;
+        for (int j = 0; j < C.size(); j++) {
+            point_pairs.emplace_back(j, D[j][i]);
         }
-        hash_table[hash_value].push_back(i);
-    }
-    return hash_table;
-}
-
-void knnSearchLSH(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k, int reduced_dim, double w, vector<vector<int>>& idx, vector<vector<double>>& dist) {
-    // Generate random projections
-    vector<vector<double>> projections = generateRandomProjections(C[0].size(), reduced_dim);
-    vector<vector<double>> projected_C = projectPoints(C, projections);
-    vector<vector<double>> projected_Q = projectPoints(Q, projections);
-
-    unordered_map<int, vector<int>> hash_table = hashPoints(projected_C, w);
-
-    for (int i = 0; i < Q.size(); ++i) {
-        int hash_value = 0;
-        for (int j = 0; j < projected_Q[i].size(); ++j) {
-            hash_value += static_cast<int>(floor(projected_Q[i][j] / w));
-        }
-
-        vector<pair<int, double>> point_pairs;
-        if (hash_table.find(hash_value) != hash_table.end()) {
-            vector<vector<double>> subC;
-            for (int idx : hash_table[hash_value]) {
-            subC.push_back(C[idx]);
-            }
-            vector<vector<double>> subQ = {Q[i]};
-            vector<vector<double>> D;
-            calculateDistances(subC, subQ, D);
-            for (int j = 0; j < subC.size(); ++j) {
-            point_pairs.emplace_back(hash_table[hash_value][j], D[j][0]);
-            }
-        }
-
+        
         quickSelect(point_pairs, k);
-
+        
         idx[i].resize(k);
         dist[i].resize(k);
-        for (int j = 0; j < k; ++j) {
+        for (int j = 0; j < k; j++) {
             idx[i][j] = point_pairs[j].first;
-            dist[i][j] = sqrt(point_pairs[j].second);
+           dist[i][j] = sqrt(point_pairs[j].second);
         }
     }
-    cout << projected_C[0].size() << endl;
+    return {idx, dist};
 }
 
 pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
-
     int c_points = C.size();
     int q_points = Q.size();
     int d = C[0].size();
-    int dl = sqrt(d);
-    int num_threads = omp_get_max_threads();
-    int chunk_size = (q_points + num_threads - 1) / num_threads;
-    vector<vector<vector<int>>> idx_chunks(num_threads);
-    vector<vector<vector<double>>> dist_chunks(num_threads);
-
-    #pragma omp parallel
-    {
-        int thread_id = omp_get_thread_num();
-        int start = thread_id * chunk_size;
-        int end = min(start + chunk_size, q_points);
-
-        vector<vector<double>> subQ(Q.begin() + start, Q.begin() + end);
-        int sq_points = subQ.size();
-        vector<vector<int>> sub_idx(sq_points, vector<int>(k));
-        vector<vector<double>> sub_dist(sq_points, vector<double>(k));
-
-        knnSearchLSH(C, subQ, k, dl , 10, sub_idx, sub_dist);
-
-        idx_chunks[thread_id] = sub_idx;
-        dist_chunks[thread_id] = sub_dist;
-    }
-
     vector<vector<int>> idx(q_points, vector<int>(k));
     vector<vector<double>> dist(q_points, vector<double>(k));
-    for (int t = 0; t < num_threads; ++t) {
-        int start = t * chunk_size;
-        int end = min(start + chunk_size, q_points);
-        for (int i = start; i < end; ++i) {
-            idx[i] = idx_chunks[t][i - start];
-            dist[i] = dist_chunks[t][i - start];
+
+    int num_subQs = (q_points + 49) / 50; // Number of sub-Queries needed
+    vector<vector<vector<double>>> subQs(num_subQs);
+
+    #pragma omp parallel for
+    for (int i = 0; i < num_subQs; ++i) {
+        int start_idx = i * 50;
+        int end_idx = min(start_idx + 50, q_points);
+        subQs[i].assign(Q.begin() + start_idx, Q.begin() + end_idx);
+    }
+
+    #pragma omp parallel for
+    for (int i = 0; i < num_subQs; ++i) {
+        auto [subidx, subdist] = knnSearch(C, subQs[i], k);
+        for (int j = 0; j < subQs[i].size(); ++j) {
+            idx[i * 50 + j] = subidx[j];
+            dist[i * 50 + j] = subdist[j];
         }
     }
 
     return {idx, dist};
 }
 
-// For testing
 int main() {
-    int k = 2;
-    int c = 10000; // Number of points for Corpus
-    int q = 300;   // Number of Queries
-    int d = 784;     // Dimensions
+    srand(time(0)); // Seed the random number generator
+    int k = 100;
 
     vector<vector<double>> C, Q;
 
@@ -239,6 +226,10 @@ int main() {
     cin >> option;
 
     if (option == 1) {
+        int c = 10000; // Number of points for Corpus
+        int q = 10000;   // Number of Queries
+        int d = 784;     // Dimensions
+
         // Generate random C and Q matrices
         C.resize(c, vector<double>(d));
         Q.resize(q, vector<double>(d));
@@ -253,43 +244,70 @@ int main() {
             }
         }
     } else if(option == 3) {
+        k = 2;
         C = {
-            {1.0, 2.0},
-            {4.0, 5.0},
-            {7.0, 8.0},
-            {10.0, 11.0},
-            {13.0, 14.0},
-            {16.0, 17.0},
-            {19.0, 20.0},
-            {22.0, 23.0},
-            {25.0, 26.0},
-            {28.0, 29.0}
+            {1.0, 2.0, 3.0, 4.0, 5.0},
+            {6.0, 7.0, 8.0, 9.0, 10.0},
+            {11.0, 12.0, 13.0, 14.0, 15.0},
+            {16.0, 17.0, 18.0, 19.0, 20.0},
+            {21.0, 22.0, 23.0, 24.0, 25.0},
+            {26.0, 27.0, 28.0, 29.0, 30.0},
+            {31.0, 32.0, 33.0, 34.0, 35.0},
+            {36.0, 37.0, 38.0, 39.0, 40.0},
+            {1.1, 2.6, 3.1, 4.6, 5.1},
+            {46.0, 47.0, 48.0, 49.0, 50.0}
         };
 
         Q = {
-            {1.1, 2.6},
-            {4.5, 5.2},
-            {11.0, 8.0},
-            {14.0, 15.0},
-            {17.0, 18.0},
-            {20.0, 21.0},
-            {23.0, 24.0},
-            {26.0, 27.0},
-            {29.0, 30.0},
-            {32.0, 33.0}
+            {1.1, 2.6, 3.1, 4.6, 5.1},
+            {6.5, 7.2, 8.5, 9.2, 10.5},
+            {11.0, 12.0, 13.0, 14.0, 15.0},
+            {16.0, 17.0, 18.0, 19.0, 20.0},
+            {21.0, 22.0, 23.0, 24.0, 25.0},
+            {26.0, 27.0, 28.0, 29.0, 30.0},
+            {31.0, 32.0, 33.0, 34.0, 35.0},
+            {36.0, 37.0, 38.0, 39.0, 40.0},
+            {41.0, 42.0, 43.0, 44.0, 45.0},
+            {46.0, 47.0, 48.0, 49.0, 50.0}
         };
+
     }   else {
         cout << "Invalid option" << endl;
         return 1;
     }
 
     // Perform k-NN search while measuring time
-    auto start = omp_get_wtime();
-    auto [idx, dist] = knnSearchParallel(C, Q, k);
-    auto end = omp_get_wtime();
-    cout << "knnsearch took " << (end - start) << " seconds" << endl;
+    int cp = C.size();
+    int qp = Q.size();
+    int dim = C[0].size();
 
-    //printResults(idx, dist);
+    if(cp < 100 && qp < 100 && dim < 10) {
+        int dl = sqrt(dim) + 1;
+        cout << "dl: " << dl << endl;
+        auto start = omp_get_wtime();
+        vector<vector<double>> CS, QS;
+        vector<vector<double>> projections = generateRandomProjections(dim, dl);
+        CS = projectPoints(C, projections);
+        QS = projectPoints(Q, projections);
+
+        auto [idx, dist] = knnSearchParallel(C, Q, k);
+        auto end = omp_get_wtime();
+
+        cout << "knnsearch took " << (end - start) << " seconds" << endl;
+        printResults(idx, dist);
+    } else {
+        int dl = sqrt(dim) + 1;
+        auto start = omp_get_wtime();
+        vector<vector<double>> CS, QS;
+        vector<vector<double>> projections = generateRandomProjections(dim, dl);
+        CS = projectPoints(C, projections);
+        QS = projectPoints(Q, projections);
+
+        auto [idx, dist] = knnSearchParallel(CS, QS, k);
+        auto end = omp_get_wtime();
+
+        cout << "knnsearch took " << (end - start) << " seconds" << endl;
+    }
 
     return 0;
 }
