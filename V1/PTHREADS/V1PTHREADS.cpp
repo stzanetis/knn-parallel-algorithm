@@ -1,9 +1,9 @@
 #include <iostream>
 #include <vector>
+#include <cmath>
 #include <cblas.h>
-#include <H5Cpp.h>
-#include <random>
 #include <chrono>
+#include <pthread.h>
 
 using namespace std;
 
@@ -13,34 +13,6 @@ void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& 
         for (int j = 0; j < idx[i].size(); j++) {
             std::cout << "Neighbor " << j << ": index = " << idx[i][j] << ", distance = " << dist[i][j] << "\n";
         }
-    }
-}
-
-int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pivotIndex) {
-    double pivotValue = point_pairs[pivotIndex].second;
-    int storeIndex = left;
-    swap(point_pairs[pivotIndex], point_pairs[right]);
-    for (int i = left; i < right; i++) {
-        if (point_pairs[i].second < pivotValue) {
-            swap(point_pairs[storeIndex], point_pairs[i]);
-            storeIndex++;
-        }
-    }
-    swap(point_pairs[right], point_pairs[storeIndex]);
-    return storeIndex;
-}
-
-void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
-    // Returns since the points are less or equal to k, but not in order
-    if (point_pairs.size() <= k) return;
-
-    int left = 0, right = point_pairs.size() - 1;
-    while (left <= right) {
-        int pivotIndex = left + (right - left) / 2;
-        pivotIndex = partition(point_pairs, left, right, pivotIndex);
-        if (pivotIndex == k) break;
-        else if (pivotIndex < k) left = pivotIndex + 1;
-        else right = pivotIndex - 1;
     }
 }
 
@@ -96,10 +68,36 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     }
 }
 
-pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
+int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pivotIndex) {
+    double pivotValue = point_pairs[pivotIndex].second;
+    int storeIndex = left;
+    swap(point_pairs[pivotIndex], point_pairs[right]);
+    for (int i = left; i < right; i++) {
+        if (point_pairs[i].second < pivotValue) {
+            swap(point_pairs[storeIndex], point_pairs[i]);
+            storeIndex++;
+        }
+    }
+    swap(point_pairs[right], point_pairs[storeIndex]);
+    return storeIndex;
+}
+
+void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
+    // Returns since the points are less or equal to k, but not in order
+    if (point_pairs.size() <= k) return;
+
+    int left = 0, right = point_pairs.size() - 1;
+    while (left <= right) {
+        int pivotIndex = left + (right - left) / 2;
+        pivotIndex = partition(point_pairs, left, right, pivotIndex);
+        if (pivotIndex == k) break;
+        else if (pivotIndex < k) left = pivotIndex + 1;
+        else right = pivotIndex - 1;
+    }
+}
+
+void knnSearch(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k, vector<vector<int>>& idx, vector<vector<double>>& dist) {
     vector<vector<double>> D;
-    vector<vector<int>> idx(Q.size());
-    vector<vector<double>> dist(Q.size());
     calculateDistances(C, Q, D);
 
     for (int i = 0; i < Q.size(); i++) {
@@ -117,94 +115,85 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<
             dist[i][j] = sqrt(point_pairs[j].second);
         }
     }
+}
+
+pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
+    int c_points = C.size();
+    int q_points = Q.size();
+    int d = C[0].size();
+    int num_threads = 4; // You can adjust the number of threads
+    int chunk_size = (q_points + num_threads - 1) / num_threads;
+    vector<vector<vector<int>>> idx_chunks(num_threads);
+    vector<vector<vector<double>>> dist_chunks(num_threads);
+
+    vector<pthread_t> threads(num_threads);
+    struct ThreadData {
+        int thread_id;
+        int start;
+        int end;
+        const vector<vector<double>>* C;
+        const vector<vector<double>>* Q;
+        int k;
+        vector<vector<int>>* idx_chunk;
+        vector<vector<double>>* dist_chunk;
+    };
+    vector<ThreadData> thread_data(num_threads);
+
+    auto thread_func = [](void* arg) -> void* {
+        ThreadData* data = static_cast<ThreadData*>(arg);
+        vector<vector<double>> subQ(data->Q->begin() + data->start, data->Q->begin() + data->end);
+        int sq_points = subQ.size();
+        vector<vector<int>> sub_idx(sq_points, vector<int>(data->k));
+        vector<vector<double>> sub_dist(sq_points, vector<double>(data->k));
+
+        knnSearch(*data->C, subQ, data->k, sub_idx, sub_dist);
+
+        *data->idx_chunk = sub_idx;
+        *data->dist_chunk = sub_dist;
+        return nullptr;
+    };
+
+    for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
+        int start = thread_id * chunk_size;
+        int end = min(start + chunk_size, q_points);
+
+        thread_data[thread_id] = {thread_id, start, end, &C, &Q, k, &idx_chunks[thread_id], &dist_chunks[thread_id]};
+        pthread_create(&threads[thread_id], nullptr, thread_func, &thread_data[thread_id]);
+    }
+
+    for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
+        pthread_join(threads[thread_id], nullptr);
+    }
+
+    // Combine the results from all threads
+    vector<vector<int>> idx(q_points, vector<int>(k));
+    vector<vector<double>> dist(q_points, vector<double>(k));
+    for (int t = 0; t < num_threads; ++t) {
+        int start = t * chunk_size;
+        int end = min(start + chunk_size, q_points);
+        for (int i = start; i < end; ++i) {
+            idx[i] = idx_chunks[t][i - start];
+            dist[i] = dist_chunks[t][i - start];
+        }
+    }
 
     return {idx, dist};
-}
-
-void exportResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
-    hsize_t queries = idx.size();
-    hsize_t k = idx[0].size();
-    hsize_t dims[2] = {queries, k};
-
-    try {
-        // Create a new HDF5 file
-        H5::H5File file("results.h5", H5F_ACC_TRUNC);
-
-        // Create idx dataset
-        H5::DataSpace dataspace(2, dims);
-        H5::DataSet dataset_idx = file.createDataSet("idx", H5::PredType::NATIVE_INT, dataspace);
-        vector<int> flat_idx;
-        for (const auto& row : idx) {
-            flat_idx.insert(flat_idx.end(), row.begin(), row.end());
-        }
-        dataset_idx.write(flat_idx.data(), H5::PredType::NATIVE_INT);
-
-        // Create dist dataset
-        H5::DataSet dataset_dist = file.createDataSet("dist", H5::PredType::NATIVE_DOUBLE, dataspace);
-        vector<double> flat_dist;
-        for (const auto& row : dist) {
-            flat_dist.insert(flat_dist.end(), row.begin(), row.end());
-        }
-        dataset_dist.write(flat_dist.data(), H5::PredType::NATIVE_DOUBLE);
-
-        cout << "Results exported to results.h5" << endl;
-
-        // Close the file
-        file.close();
-    } catch (H5::Exception& error) {
-        cerr << "Error: " << error.getDetailMsg() << endl;
-    }
-}
-
-void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
-    try {
-        // Open the HDF5 file
-        cout << "Enter the filename: ";
-        string filename;
-        cin >> filename;
-        H5::H5File file(filename, H5F_ACC_RDONLY);
-
-        // Read C dataset
-        H5::DataSet dataset_C = file.openDataSet("C");
-        H5::DataSpace dataspace_C = dataset_C.getSpace();
-        hsize_t dims_C[2];
-        dataspace_C.getSimpleExtentDims(dims_C, NULL);
-        C.resize(dims_C[0], vector<double>(dims_C[1]));
-        dataset_C.read(C[0].data(), H5::PredType::NATIVE_DOUBLE);
-
-        // Read Q dataset
-        H5::DataSet dataset_Q = file.openDataSet("Q");
-        H5::DataSpace dataspace_Q = dataset_Q.getSpace();
-        hsize_t dims_Q[2];
-        dataspace_Q.getSimpleExtentDims(dims_Q, NULL);
-        Q.resize(dims_Q[0], vector<double>(dims_Q[1]));
-        dataset_Q.read(Q[0].data(), H5::PredType::NATIVE_DOUBLE);
-
-        cout << "Data imported from data.h5" << endl;
-
-        // Close the file
-        file.close();
-    } catch (H5::Exception& error) {
-        cerr << "Error: " << error.getDetailMsg() << endl;
-    }
 }
 
 // For testing
 int main() {
     int k = 100;
-    int c = 10000;     // Number of points for Corpus
-    int q = 10000;        // Number of Queries
-    int d = 784;         // Dimensions
+    int c = 10000; // Number of points for Corpus
+    int q = 10000;   // Number of Queries
+    int d = 784;     // Dimensions
 
     vector<vector<double>> C, Q;
-    
+
     int option;
-    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect and option: ";
+    cout << "1.Random matrices   3.Small matrices for printing  Select and option: ";
     cin >> option;
 
     if (option == 1) {
-        importData(C, Q);
-    } else if (option == 2) {
         // Generate random C and Q matrices
         C.resize(c, vector<double>(d));
         Q.resize(q, vector<double>(d));
@@ -251,14 +240,12 @@ int main() {
 
     // Perform k-NN search while measuring time
     auto start = chrono::high_resolution_clock::now();
-    auto [idx, dist] = knnSearch(C, Q, k);
+    auto [idx, dist] = knnSearchParallel(C, Q, k);
     auto end = chrono::high_resolution_clock::now();
     chrono::duration<double> elapsed = end - start;
-
-    cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
+    cout << "knnsearch took " << elapsed.count() << " seconds" << endl;
 
     //printResults(idx, dist);
-    exportResults(idx, dist);
 
     return 0;
 }

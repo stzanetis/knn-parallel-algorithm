@@ -1,8 +1,9 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <omp.h>
 #include <cblas.h>
+#include <cilk/cilk.h>
+#include <cilk/cilk_api.h>
 
 using namespace std;
 
@@ -121,14 +122,12 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector
     int c_points = C.size();
     int q_points = Q.size();
     int d = C[0].size();
-    int num_threads = omp_get_max_threads();
+    int num_threads = __cilkrts_get_nworkers();
     int chunk_size = (q_points + num_threads - 1) / num_threads;
     vector<vector<vector<int>>> idx_chunks(num_threads);
     vector<vector<vector<double>>> dist_chunks(num_threads);
 
-    #pragma omp parallel
-    {
-        int thread_id = omp_get_thread_num();
+    cilk_for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
         int start = thread_id * chunk_size;
         int end = min(start + chunk_size, q_points);
 
@@ -142,6 +141,8 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector
         idx_chunks[thread_id] = sub_idx;
         dist_chunks[thread_id] = sub_dist;
     }
+    
+    // Combine the results from all threads
     vector<vector<int>> idx(q_points, vector<int>(k));
     vector<vector<double>> dist(q_points, vector<double>(k));
     for (int t = 0; t < num_threads; ++t) {
