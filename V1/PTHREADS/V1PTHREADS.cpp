@@ -245,7 +245,7 @@ int main() {
     chrono::duration<double> elapsed = end - start;
     cout << "knnsearch took " << elapsed.count() << " seconds" << endl;
 
-    //printResults(idx, dist);
+    printResults(idx, dist);
 
     return 0;
 }
