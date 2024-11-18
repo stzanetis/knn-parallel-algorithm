@@ -2,14 +2,14 @@
 CXX = g++
 
 # Compiler flags
-CXXFLAGS = -O2 -fopenmp
+CXXFLAGS = -I/usr/include/hdf5/serial -O2 -fopenmp
 
 # Linker flags
-LDFLAGS = -lopenblas -fopenmp
+LDFLAGS = -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_cpp -lhdf5 -lopenblas -fopenmp
 
 # Source and target files
 TARGET = parallelknn
-SRCS = V1OPENMP.cpp
+SRCS = V1OMP.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 # Default target

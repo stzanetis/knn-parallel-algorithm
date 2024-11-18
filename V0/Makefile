@@ -1,9 +1,11 @@
 # Compiler
 CXX = g++
 
+# Compiler flags
+CXXFLAGS = -I/usr/include/hdf5/serial
+
 # Linker flags
 LDFLAGS = -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_cpp -lhdf5 -lopenblas
-CXXFLAGS = -I/usr/include/hdf5/serial
 
 # Source and target files
 TARGET = serialkNN

@@ -101,8 +101,6 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<
     vector<vector<int>> idx(Q.size());
     vector<vector<double>> dist(Q.size());
     calculateDistances(C, Q, D);
-    cout << "Dsize: " << D.size() << endl;
-    cout << "D[0]size: " << D[0].size() << endl;
 
     for (int i = 0; i < Q.size(); i++) {
         vector<pair<int,double>> point_pairs;
@@ -193,11 +191,7 @@ void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
 
 // For testing
 int main() {
-    int k = 100;
-    int c = 10000;     // Number of points for Corpus
-    int q = 10000;        // Number of Queries
-    int d = 784;         // Dimensions
-
+    int k, c, q, d;
     vector<vector<double>> C, Q;
     
     int option;
@@ -207,6 +201,16 @@ int main() {
     if (option == 1) {
         importData(C, Q);
     } else if (option == 2) {
+        // Ask for matrices size, dimensions and number of neighbors
+        cout << "Enter the number of points for Corpus: ";
+        cin >> c;
+        cout << "Enter the number of Queries: ";
+        cin >> q;
+        cout << "Enter the number of dimensions: ";
+        cin >> d;
+        cout << "Enter the value of k: ";
+        cin >> k;
+
         // Generate random C and Q matrices
         C.resize(c, vector<double>(d));
         Q.resize(q, vector<double>(d));
@@ -234,7 +238,6 @@ int main() {
             {1.1, 2.6, 3.1, 4.6, 5.1},
             {46.0, 47.0, 48.0, 49.0, 50.0}
         };
-
         Q = {
             {1.1, 2.6, 3.1, 4.6, 5.1},
             {6.5, 7.2, 8.5, 9.2, 10.5},
@@ -261,8 +264,7 @@ int main() {
     cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
 
     exportResults(idx, dist);
-    //printResults(idx, dist);
-
+    printResults(idx, dist);
 
     return 0;
 }
