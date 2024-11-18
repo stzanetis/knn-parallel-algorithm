@@ -1,11 +1,35 @@
 #include <iostream>
 #include <vector>
+#include <cmath>
+#include <pthread.h>
 #include <cblas.h>
-#include <H5Cpp.h>
 #include <random>
+#include <H5Cpp.h>
+#include <ctime>
 #include <chrono>
 
 using namespace std;
+
+struct ThreadData {
+    int i;
+    int chunk_size;
+    int q_points;
+    const vector<vector<double>>* Q;
+    vector<vector<vector<double>>>* subQs;
+    vector<vector<int>>* idx;
+    vector<vector<double>>* dist;
+    const vector<vector<double>>* C;
+    int k;
+};
+
+void* thread_func(void* arg) {
+    ThreadData* data = static_cast<ThreadData*>(arg);
+    int i = data->i;
+    int start_idx = i * data->chunk_size;
+    int end_idx = min(start_idx + data->chunk_size, data->q_points);
+    data->subQs->at(i).assign(data->Q->begin() + start_idx, data->Q->begin() + end_idx);
+    return nullptr;
+}
 
 void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
     for (int i = 0; i < idx.size(); i++) {
@@ -13,34 +37,6 @@ void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& 
         for (int j = 0; j < idx[i].size(); j++) {
             std::cout << "Neighbor " << j << ": index = " << idx[i][j] << ", distance = " << dist[i][j] << "\n";
         }
-    }
-}
-
-int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pivotIndex) {
-    double pivotValue = point_pairs[pivotIndex].second;
-    int storeIndex = left;
-    swap(point_pairs[pivotIndex], point_pairs[right]);
-    for (int i = left; i < right; i++) {
-        if (point_pairs[i].second < pivotValue) {
-            swap(point_pairs[storeIndex], point_pairs[i]);
-            storeIndex++;
-        }
-    }
-    swap(point_pairs[right], point_pairs[storeIndex]);
-    return storeIndex;
-}
-
-void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
-    // Returns since the points are less or equal to k, but not in order
-    if (point_pairs.size() <= k) return;
-
-    int left = 0, right = point_pairs.size() - 1;
-    while (left <= right) {
-        int pivotIndex = left + (right - left) / 2;
-        pivotIndex = partition(point_pairs, left, right, pivotIndex);
-        if (pivotIndex == k) break;
-        else if (pivotIndex < k) left = pivotIndex + 1;
-        else right = pivotIndex - 1;
     }
 }
 
@@ -67,6 +63,7 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     }
 
     // Calculate C^2
+    //#pragma omp parallel for
     for (int i = 0; i < c_points; i++) {
         double sum = 0.0;
         for (int j = 0; j < d; ++j) {
@@ -76,6 +73,7 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     }
 
     // Calculate Q^2
+    //#pragma omp parallel for
     for (int i = 0; i < q_points; i++) {
         double sum = 0.0;
         for (int j = 0; j < d; ++j) {
@@ -89,6 +87,7 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
 
     // Calculate D^2 using (C^2 - 2C*Q^T + Q^2T)
     D.resize(c_points, vector<double>(q_points));
+    //#pragma omp parallel for
     for (int i =0; i < c_points; i++) {
         for (int j = 0; j < q_points; j++) {
             D[i][j] = CSquared[i] + QSquared[j] - 2 * CQT[i * q_points + j];
@@ -97,6 +96,78 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
             }
         }
     }
+}
+
+int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pivotIndex) {
+    double pivotValue = point_pairs[pivotIndex].second;
+    int storeIndex = left;
+    swap(point_pairs[pivotIndex], point_pairs[right]);
+    for (int i = left; i < right; i++) {
+        if (point_pairs[i].second < pivotValue) {
+            swap(point_pairs[storeIndex], point_pairs[i]);
+            storeIndex++;
+        }
+    }
+    swap(point_pairs[right], point_pairs[storeIndex]);
+    return storeIndex;
+}
+
+void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
+    if (point_pairs.size() <= k) return;    // Returns since the points are less or equal to k, but not in order
+
+    int left = 0, right = point_pairs.size() - 1;
+    while (left <= right) {
+        int pivotIndex = left + (right - left) / 2;
+        pivotIndex = partition(point_pairs, left, right, pivotIndex);
+        if (pivotIndex == k) break;
+        else if (pivotIndex < k) left = pivotIndex + 1;
+        else right = pivotIndex - 1;
+    }
+}
+
+vector<vector<double>> generateRandomProjections(int original_dim, int reduced_dim) {
+    vector<vector<double>> projections(reduced_dim, vector<double>(original_dim));
+    for (int i = 0; i < reduced_dim; i++) {
+        for (int j = 0; j < original_dim; ++j) {
+            projections[i][j] = (rand()% 2 == 0 ? -1 : 1) / sqrt((double)reduced_dim);
+        }
+    }
+
+    return projections;
+}
+
+vector<vector<double>> projectPoints(const vector<vector<double>>& points, const vector<vector<double>>& projections) {
+    int num_points = points.size();
+    int reduced_dim = projections.size();
+    int original_dim = points[0].size();
+
+    vector<vector<double>> projected_points(num_points, vector<double>(reduced_dim));
+    vector<double> points_flat(num_points * original_dim);
+    vector<double> projections_flat(reduced_dim * original_dim);
+    vector<double> projected_points_flat(num_points * reduced_dim);
+
+    for (int i = 0; i < num_points; ++i) {
+        for (int j = 0; j < original_dim; ++j) {
+            points_flat[i * original_dim + j] = points[i][j];
+        }
+    }
+
+    for (int i = 0; i < reduced_dim; ++i) {
+        for (int j = 0; j < original_dim; ++j) {
+            projections_flat[i * original_dim + j] = projections[i][j];
+        }
+    }
+
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, num_points, reduced_dim, original_dim, 1.0, points_flat.data(), original_dim, projections_flat.data(), original_dim, 0.0, projected_points_flat.data(), reduced_dim);
+
+    // Convert the flattened result back to a 2D vector
+    for (int i = 0; i < num_points; ++i) {
+        for (int j = 0; j < reduced_dim; ++j) {
+            projected_points[i][j] = projected_points_flat[i * reduced_dim + j];
+        }
+    }
+    
+    return projected_points;
 }
 
 pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
@@ -117,8 +188,61 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<
         dist[i].resize(k);
         for (int j = 0; j < k; j++) {
             idx[i][j] = point_pairs[j].first;
-            dist[i][j] = sqrt(point_pairs[j].second);
+           dist[i][j] = sqrt(point_pairs[j].second);
         }
+    }
+
+    return {idx, dist};
+}
+
+void* knn_thread_func(void* arg) {
+    ThreadData* data = static_cast<ThreadData*>(arg);
+    auto [subidx, subdist] = knnSearch(*data->C, data->subQs->at(data->i), data->k);
+    for (int j = 0; j < data->subQs->at(data->i).size(); ++j) {
+        data->idx->at(data->i * data->chunk_size + j) = subidx[j];
+        data->dist->at(data->i * data->chunk_size + j) = subdist[j];
+    }
+    return nullptr;
+}
+
+pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
+    int c_points = C.size();
+    int q_points = Q.size();
+    int d = C[0].size();
+    vector<vector<int>> idx(q_points, vector<int>(k));
+    vector<vector<double>> dist(q_points, vector<double>(k));
+
+    int chunk_size = 3;
+    int num_subQs = (q_points + (chunk_size - 1)) / chunk_size; // Number of sub-Queries needed
+    cout << num_subQs << endl;
+    vector<vector<vector<double>>> subQs(num_subQs);
+
+    vector<pthread_t> threads(num_subQs);
+    vector<ThreadData> thread_data(num_subQs);
+
+    for (int i = 0; i < num_subQs; ++i) {
+        thread_data[i] = {i, chunk_size, q_points, &Q, &subQs, &idx, &dist, &C, k};
+        cout << "Creating thread " << i << " for sub-queries" << endl;
+        pthread_create(&threads[i], nullptr, thread_func, &thread_data[i]);
+    }
+
+    for (int i = 0; i < num_subQs; ++i) {
+        pthread_join(threads[i], nullptr);
+        cout << "Joined thread " << i << " for sub-queries" << endl;
+    }
+
+    vector<pthread_t> knn_threads(num_subQs);
+    vector<ThreadData> knn_thread_data(num_subQs);
+
+    for (int i = 0; i < num_subQs; ++i) {
+        knn_thread_data[i] = {i, chunk_size, q_points, &Q, &subQs, &idx, &dist, &C, k};
+        cout << "Creating knn thread " << i << endl;
+        pthread_create(&knn_threads[i], nullptr, knn_thread_func, &knn_thread_data[i]);
+    }
+    
+    for (int i = 0; i < num_subQs; ++i) {
+        pthread_join(knn_threads[i], nullptr);
+        cout << "Joined knn thread " << i << endl;
     }
 
     return {idx, dist};
@@ -209,9 +333,11 @@ void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
 }
 
 int main() {
-    int k, c, q, d;
+    srand(time(0));
+    int c, q, d, k;
+    double const e = 0.3;
     vector<vector<double>> C, Q;
-    
+
     int option;
     cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect and option: ";
     cin >> option;
@@ -229,7 +355,7 @@ int main() {
         cin >> q;
         cout << "Enter the number of dimensions: ";
         cin >> d;
-
+        
         // Generate random C and Q matrices
         C.resize(c, vector<double>(d));
         Q.resize(q, vector<double>(d));
@@ -268,20 +394,25 @@ int main() {
             {36.0, 37.0, 38.0, 576.0, 40.0},
             {41.0, 42.0, 4.0, 0.544, 8.0},
             {41.0, 47.0, 8.0, 49.0, 599.0}
-        }; 
-    }   else {
+        };
+    } else {
         cout << "Invalid option" << endl;
         return 1;
     }
 
     // Perform k-NN search while measuring time
+    int cp = C.size();
+    int qp = Q.size();
+    int dim = C[0].size();
+    int dl = log(cp) / (e*e);
+
     auto start = chrono::high_resolution_clock::now();
-    auto [idx, dist] = knnSearch(C, Q, k);
+    auto [idx, dist] = knnSearchParallel(C, Q, k);
     auto end = chrono::high_resolution_clock::now();
     chrono::duration<double> elapsed = end - start;
 
     cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
-
+        
     exportResults(idx, dist);
     printResults(idx, dist);
 

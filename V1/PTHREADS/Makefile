@@ -2,14 +2,14 @@
 CXX = g++
 
 # Compiler flags
-CXXFLAGS = -O2 -pthread
+CXXFLAGS = -I/usr/include/hdf5/serial -O2 -pthread
 
 # Linker flags
-LDFLAGS = -lopenblas -pthread
+LDFLAGS = -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_cpp -lhdf5 -lopenblas -pthread
 
 # Source and target files
 TARGET = parallelknn
-SRCS = V1PTHREADS.cpp
+SRCS = V1PTH.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 # Default target
