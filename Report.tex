@@ -3,6 +3,7 @@
 % Import packages
 \usepackage{graphicx}  % For including images
 \usepackage{amsmath}   % For advanced math formatting
+\usepackage{bm}
 \usepackage{hyperref}  % For creating hyperlinks
 \usepackage{geometry}  % To set page margins
 \usepackage{helvet}
@@ -18,27 +19,39 @@
 \tableofcontents  % Generates the table of contents
 
 \chapter{Introduction}
-This project is part of an assignment in Parallel and distributed systems class of the Aristotle University of Thessaloniki. The assignment requires implementing a \textbf{k-NN} algorithm to find the\textbf{ k nearest neighbors} of a set of points from a Query data set, relative to a Corpus data set in a high-dimensional space. This algorithm, implemented in the \textbf{C++} language, given a set of M-points from a Corpus data set and N-points from a Query data set, both in the same D-dimensional space, identifies the k-nearest neighbors of each query point. Using optimized matrix operations as well as the \textbf{OpenBLAS} library, this algorithm handles high-dimensional distance calculations efficiently.
+The k-Nearest Neighbors \textbf{(kNN)} algorithm is a fundamental technique for finding the closest neighbors of a query set \textbf{Q} with respect to a data corpus \textbf{C}. However, its computational complexity becomes prohibitive for large datasets, especially when the corpus and query set have high dimensions. This report presents a parallel implementation of the kNN search algorithm by leveraging parallelism using libraries like \textbf{OpenMP, OpenCILK} and \textbf{PTHREADS} as part of an assignment in the Parallel and distributed systems class of the department of Electrical and computer engineering of the Aristotle unversity of Thessaloniki. This algorithm, implemented in the \textbf{C++} language uses the \textbf{OpenBLAS} library for optimized matrix computations for high dimensional distance calculations and the correctness of the implementation is validated against MATLAB's \textbf{knnsearch}.
 
 \section{Problem Analysis}
-The objective of the assignment is to implement a subroutine in \textbf{C++} that computes the \textbf{k nearest neighbors} of each query point in \textbf{Q(Query set)} relative to a set of points in \textbf{C(Corpus set)} based on their distances, using a multitude of tools for implementing a parallel implementation as well as a version using serial computing.
+The kNN problem aims to compute the indices and distances of the k nearest neighbors for each query point in Q with respect to C. The exact computation involves:
+\[
+\bm{D} = \sqrt{\bm{C}^2 - 2\bm{C}\bm{Q}^T + \bm{Q}^2}
+\]
+where the operations are element-wise.
+Due to memory constraints, the distance matrix D is computed in blocks by dividing Q into subsets, computing neighbors recursively for these subsets and finally, merging the partial solutions efficiently.
 
-\chapter{Serial Version V0}
-In this chapter, we explain the methods used in the project.
+\chapter{Implementation Details}
 
-\chapter{Parallel Version}
-In this chapter, we present the results.
+\chapter{Parallelization Techniques}
+The distance matrix D is computed in blocks, allowing memory-efficient operations and parallel computation. Each block is processed concurrently using different parallel paradigms.
 
 \section{Using OpenMP}
-Description of the first experiment and results.
+\begin{itemize}
+    \item A shared-memory approach to parallelize block computations.
+    \item Loops are parallelized using \textbf{\#pragma omp parallel for}, distributing blocks across threads.
+\end{itemize}
 
 \section{Using OpenCILK}
-Description of the first experiment and results.
+\begin{itemize}
+    \item Provides parallelism using lightweight tasks and cilkfor.
+    \item Recursive computations (e.g., merging solutions) are naturally expressed using OpenCilk's divide-and-conquer model.
+\end{itemize}
 
 \section{Using PTHREADS}
-Description of the first experiment and results.
+\begin{itemize}
+    \item Fine-grained control over thread creation and workload distribution.
+    \item Each thread processes a distinct block of D, requiring explicit synchronization for merging results.
+\end{itemize}
 
-\chapter{Conclusion}
-Summarize the findings and conclude the report.
+\chapter{Results and Correctness Verification}
 
 \end{document}
