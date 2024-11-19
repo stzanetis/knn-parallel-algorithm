@@ -4,6 +4,7 @@
 #include <H5Cpp.h>
 #include <random>
 #include <chrono>
+#include <algorithm>
 
 using namespace std;
 
@@ -42,6 +43,11 @@ void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
         else if (pivotIndex < k) left = pivotIndex + 1;
         else right = pivotIndex - 1;
     }
+
+    // Sort the first k elements
+    sort(point_pairs.begin(), point_pairs.begin() + k, [](const pair<int, float>& a, const pair<int, float>& b) {
+        return a.second < b.second;
+    });
 }
 
 void calculateDistances(const vector<vector<double>>& C, const vector<vector<double>>& Q, vector<vector<double>>& D) {

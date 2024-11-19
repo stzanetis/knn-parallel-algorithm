@@ -7,6 +7,7 @@
 #include <H5Cpp.h>
 #include <ctime>
 #include <chrono>
+#include <algorithm>
 
 using namespace std;
 
@@ -123,6 +124,11 @@ void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
         else if (pivotIndex < k) left = pivotIndex + 1;
         else right = pivotIndex - 1;
     }
+
+    // Sort the first k elements
+    sort(point_pairs.begin(), point_pairs.begin() + k, [](const pair<int, float>& a, const pair<int, float>& b) {
+        return a.second < b.second;
+    });
 }
 
 vector<vector<double>> generateRandomProjections(int original_dim, int reduced_dim) {
@@ -208,7 +214,7 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector
     vector<vector<int>> idx(q_points, vector<int>(k));
     vector<vector<double>> dist(q_points, vector<double>(k));
 
-    int chunk_size = 3;
+    int chunk_size = 1500;
     int num_subQs = (q_points + (chunk_size - 1)) / chunk_size; // Number of sub-Queries needed
     cout << num_subQs << endl;
     vector<vector<vector<double>>> subQs(num_subQs);
@@ -249,7 +255,7 @@ void exportResults(const vector<vector<int>>& idx, const vector<vector<double>>&
 
     try {
         // Create a new HDF5 file
-        H5::H5File file("results.h5", H5F_ACC_TRUNC);
+        H5::H5File file("pth-results.h5", H5F_ACC_TRUNC);
 
         // Create idx dataset
         H5::DataSpace dataspace(2, dims);
@@ -268,7 +274,7 @@ void exportResults(const vector<vector<int>>& idx, const vector<vector<double>>&
         }
         dataset_dist.write(flat_dist.data(), H5::PredType::NATIVE_DOUBLE);
 
-        cout << "Results exported to results.h5" << endl;
+        cout << "Results exported to pth-results.h5" << endl;
 
         // Close the file
         file.close();

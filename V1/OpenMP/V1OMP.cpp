@@ -6,10 +6,11 @@
 #include <random>
 #include <H5Cpp.h>
 #include <ctime>
+#include <algorithm>
 
 using namespace std;
 
-void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
+void printResults(const vector<vector<int>>& idx, const vector<vector<float>>& dist) {
     for (int i = 0; i < idx.size(); i++) {
         std::cout << "Query " << i << ":\n";
         for (int j = 0; j < idx[i].size(); j++) {
@@ -18,13 +19,13 @@ void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& 
     }
 }
 
-void calculateDistances(const vector<vector<double>>& C, const vector<vector<double>>& Q, vector<vector<double>>& D) {
+void calculateDistances(const vector<vector<float>>& C, const vector<vector<float>>& Q, vector<vector<float>>& D) {
     int c_points = C.size();    // Number of points in C
     int q_points = Q.size();    // Number of points in Q
     int d = C[0].size();        // Number of dimensions in a point
 
-    vector<double> CSquared(c_points);          // Vector for C^2
-    vector<double> QSquared(q_points);          // Vector for Q^2
+    vector<float> CSquared(c_points);          // Vector for C^2
+    vector<float> QSquared(q_points);          // Vector for Q^2
     vector<double> CQT(c_points * q_points);    // Vector for C * Q^T
 
     // Create a flat vector for C and Q (Used for cblas_dgemm)
@@ -53,7 +54,7 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     // Calculate Q^2
     #pragma omp parallel for
     for (int i = 0; i < q_points; i++) {
-        double sum = 0.0;
+        float sum = 0.0;
         for (int j = 0; j < d; ++j) {
             sum += Q[i][j] * Q[i][j];
         }
@@ -64,7 +65,7 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, c_points, q_points, d, 1.0, CFlat.data(), d, QFlat.data(), d, 0.0, CQT.data(), q_points);
 
     // Calculate D^2 using (C^2 - 2C*Q^T + Q^2T)
-    D.resize(c_points, vector<double>(q_points));
+    D.resize(c_points, vector<float>(q_points));
     #pragma omp parallel for
     for (int i =0; i < c_points; i++) {
         for (int j = 0; j < q_points; j++) {
@@ -76,7 +77,7 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     }
 }
 
-int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pivotIndex) {
+int partition(vector<pair<int,float>>& point_pairs, int left, int right, int pivotIndex) {
     double pivotValue = point_pairs[pivotIndex].second;
     int storeIndex = left;
     swap(point_pairs[pivotIndex], point_pairs[right]);
@@ -90,7 +91,7 @@ int partition(vector<pair<int,double>>& point_pairs, int left, int right, int pi
     return storeIndex;
 }
 
-void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
+void quickSelect(vector<pair<int,float>>& point_pairs, int k) {
     if (point_pairs.size() <= k) return;    // Returns since the points are less or equal to k, but not in order
 
     int left = 0, right = point_pairs.size() - 1;
@@ -101,10 +102,15 @@ void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
         else if (pivotIndex < k) left = pivotIndex + 1;
         else right = pivotIndex - 1;
     }
+
+    // Sort the first k elements
+    sort(point_pairs.begin(), point_pairs.begin() + k, [](const pair<int, float>& a, const pair<int, float>& b) {
+        return a.second < b.second;
+    });
 }
 
-vector<vector<double>> generateRandomProjections(int original_dim, int reduced_dim) {
-    vector<vector<double>> projections(reduced_dim, vector<double>(original_dim));
+vector<vector<float>> generateRandomProjections(int original_dim, int reduced_dim) {
+    vector<vector<float>> projections(reduced_dim, vector<float>(original_dim));
     for (int i = 0; i < reduced_dim; i++) {
         for (int j = 0; j < original_dim; ++j) {
             projections[i][j] = (rand()% 2 == 0 ? -1 : 1) / sqrt((double)reduced_dim);
@@ -114,12 +120,12 @@ vector<vector<double>> generateRandomProjections(int original_dim, int reduced_d
     return projections;
 }
 
-vector<vector<double>> projectPoints(const vector<vector<double>>& points, const vector<vector<double>>& projections) {
+vector<vector<float>> projectPoints(const vector<vector<float>>& points, const vector<vector<float>>& projections) {
     int num_points = points.size();
     int reduced_dim = projections.size();
     int original_dim = points[0].size();
 
-    vector<vector<double>> projected_points(num_points, vector<double>(reduced_dim));
+    vector<vector<float>> projected_points(num_points, vector<float>(reduced_dim));
     vector<double> points_flat(num_points * original_dim);
     vector<double> projections_flat(reduced_dim * original_dim);
     vector<double> projected_points_flat(num_points * reduced_dim);
@@ -148,14 +154,14 @@ vector<vector<double>> projectPoints(const vector<vector<double>>& points, const
     return projected_points;
 }
 
-pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
-    vector<vector<double>> D;
+pair<vector<vector<int>>, vector<vector<float>>> knnSearch(const vector<vector<float>>& C, const vector<vector<float>>& Q, int k) {
+    vector<vector<float>> D;
     vector<vector<int>> idx(Q.size());
-    vector<vector<double>> dist(Q.size());
+    vector<vector<float>> dist(Q.size());
     calculateDistances(C, Q, D);
 
     for (int i = 0; i < Q.size(); i++) {
-        vector<pair<int,double>> point_pairs;
+        vector<pair<int,float>> point_pairs;
         for (int j = 0; j < C.size(); j++) {
             point_pairs.emplace_back(j, D[j][i]);
         }
@@ -173,16 +179,16 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<
     return {idx, dist};
 }
 
-pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
+pair<vector<vector<int>>, vector<vector<float>>> knnSearchParallel(const vector<vector<float>>& C, const vector<vector<float>>& Q, int k) {
     int c_points = C.size();
     int q_points = Q.size();
     int d = C[0].size();
     vector<vector<int>> idx(q_points, vector<int>(k));
-    vector<vector<double>> dist(q_points, vector<double>(k));
+    vector<vector<float>> dist(q_points, vector<float>(k));
 
     int chunk_size = 300;
     int num_subQs = (q_points + (chunk_size-1)) / chunk_size; // Number of sub-Queries needed
-    vector<vector<vector<double>>> subQs(num_subQs);
+    vector<vector<vector<float>>> subQs(num_subQs);
 
     #pragma omp parallel for
     for (int i = 0; i < num_subQs; ++i) {
@@ -203,7 +209,7 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector
     return {idx, dist};
 }
 
-void exportResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
+void exportResults(const vector<vector<int>>& idx, const vector<vector<float>>& dist) {
     hsize_t queries = idx.size();
     hsize_t k = idx[0].size();
     hsize_t dims[2] = {queries, k};
@@ -222,12 +228,12 @@ void exportResults(const vector<vector<int>>& idx, const vector<vector<double>>&
         dataset_idx.write(flat_idx.data(), H5::PredType::NATIVE_INT);
 
         // Create dist dataset
-        H5::DataSet dataset_dist = file.createDataSet("dist", H5::PredType::NATIVE_DOUBLE, dataspace);
-        vector<double> flat_dist;
+        H5::DataSet dataset_dist = file.createDataSet("dist", H5::PredType::NATIVE_FLOAT, dataspace);
+        vector<float> flat_dist;
         for (const auto& row : dist) {
             flat_dist.insert(flat_dist.end(), row.begin(), row.end());
         }
-        dataset_dist.write(flat_dist.data(), H5::PredType::NATIVE_DOUBLE);
+        dataset_dist.write(flat_dist.data(), H5::PredType::NATIVE_FLOAT);
 
         cout << "Results exported to omp-results.h5" << endl;
 
@@ -238,7 +244,7 @@ void exportResults(const vector<vector<int>>& idx, const vector<vector<double>>&
     }
 }
 
-void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
+void importData(vector<vector<float>>& C, vector<vector<float>>& Q) {
     try {
         // Open the HDF5 file
         string filename;
@@ -251,9 +257,9 @@ void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
         H5::DataSpace dataspaceC = datasetC.getSpace();
         hsize_t dimsC[2];
         dataspaceC.getSimpleExtentDims(dimsC, NULL);
-        C.resize(dimsC[0], vector<double>(dimsC[1]));
-        vector<double> flatC(dimsC[0] * dimsC[1]);
-        datasetC.read(flatC.data(), H5::PredType::NATIVE_DOUBLE);
+        C.resize(dimsC[0], vector<float>(dimsC[1]));
+        vector<float> flatC(dimsC[0] * dimsC[1]);
+        datasetC.read(flatC.data(), H5::PredType::NATIVE_FLOAT);
 
         // Copy data from the flatC array to matrix C
         for (hsize_t i = 0; i < dimsC[0]; ++i) {
@@ -267,9 +273,9 @@ void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
         H5::DataSpace dataspaceQ = datasetQ.getSpace();
         hsize_t dimsQ[2];
         dataspaceQ.getSimpleExtentDims(dimsQ, NULL);
-        Q.resize(dimsQ[0], vector<double>(dimsQ[1]));
-        vector<double> flatQ(dimsQ[0] * dimsQ[1]);
-        datasetQ.read(flatQ.data(), H5::PredType::NATIVE_DOUBLE);
+        Q.resize(dimsQ[0], vector<float>(dimsQ[1]));
+        vector<float> flatQ(dimsQ[0] * dimsQ[1]);
+        datasetQ.read(flatQ.data(), H5::PredType::NATIVE_FLOAT);
 
         // Copy data from the flatQ array to matrix Q
         for (hsize_t i = 0; i < dimsQ[0]; ++i) {
@@ -290,8 +296,8 @@ void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
 int main() {
     srand(time(0));
     int c, q, d, k;
-    double const e = 0.3;
-    vector<vector<double>> C, Q;
+    float const e = 0.3;
+    vector<vector<float>> C, Q;
 
     int option;
     cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect and option: ";
@@ -312,8 +318,8 @@ int main() {
         cin >> d;
         
         // Generate random C and Q matrices
-        C.resize(c, vector<double>(d));
-        Q.resize(q, vector<double>(d));
+        C.resize(c, vector<float>(d));
+        Q.resize(q, vector<float>(d));
         for (int i = 0; i < c; i++) {
             for (int j = 0; j < d; j++) {
                 C[i][j] = rand() % 100;
