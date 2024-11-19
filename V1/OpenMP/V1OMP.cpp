@@ -210,7 +210,7 @@ void exportResults(const vector<vector<int>>& idx, const vector<vector<double>>&
 
     try {
         // Create a new HDF5 file
-        H5::H5File file("results.h5", H5F_ACC_TRUNC);
+        H5::H5File file("omp-results.h5", H5F_ACC_TRUNC);
 
         // Create idx dataset
         H5::DataSpace dataspace(2, dims);
@@ -229,7 +229,7 @@ void exportResults(const vector<vector<int>>& idx, const vector<vector<double>>&
         }
         dataset_dist.write(flat_dist.data(), H5::PredType::NATIVE_DOUBLE);
 
-        cout << "Results exported to results.h5" << endl;
+        cout << "Results exported to omp-results.h5" << endl;
 
         // Close the file
         file.close();

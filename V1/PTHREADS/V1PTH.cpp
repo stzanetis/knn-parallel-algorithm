@@ -22,7 +22,7 @@ struct ThreadData {
     int k;
 };
 
-void* thread_func(void* arg) {
+void* threadSplitQ(void* arg) {
     ThreadData* data = static_cast<ThreadData*>(arg);
     int i = data->i;
     int start_idx = i * data->chunk_size;
@@ -170,34 +170,30 @@ vector<vector<double>> projectPoints(const vector<vector<double>>& points, const
     return projected_points;
 }
 
-pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<double>>& C, const vector<vector<double>>& Q, int k) {
-    vector<vector<double>> D;
-    vector<vector<int>> idx(Q.size());
-    vector<vector<double>> dist(Q.size());
-    calculateDistances(C, Q, D);
+void* threadKnnSearch(void* arg) {
+    ThreadData* data = static_cast<ThreadData*>(arg);
 
-    for (int i = 0; i < Q.size(); i++) {
+    vector<vector<double>> D;
+    vector<vector<int>> subidx(data->chunk_size);
+    vector<vector<double>> subdist(data->chunk_size);
+    calculateDistances(*data->C, data->subQs->at(data->i), D);
+
+    for (int i = 0; i < data->subQs->at(data->i).size(); i++) {
         vector<pair<int,double>> point_pairs;
-        for (int j = 0; j < C.size(); j++) {
+        for (int j = 0; j < data->C->size(); j++) {
             point_pairs.emplace_back(j, D[j][i]);
         }
         
-        quickSelect(point_pairs, k);
+        quickSelect(point_pairs, data->k);
         
-        idx[i].resize(k);
-        dist[i].resize(k);
-        for (int j = 0; j < k; j++) {
-            idx[i][j] = point_pairs[j].first;
-           dist[i][j] = sqrt(point_pairs[j].second);
+        subidx[i].resize(data->k);
+        subdist[i].resize(data->k);
+        for (int j = 0; j < data->k; j++) {
+            subidx[i][j] = point_pairs[j].first;
+            subdist[i][j] = sqrt(point_pairs[j].second);
         }
     }
-
-    return {idx, dist};
-}
-
-void* knn_thread_func(void* arg) {
-    ThreadData* data = static_cast<ThreadData*>(arg);
-    auto [subidx, subdist] = knnSearch(*data->C, data->subQs->at(data->i), data->k);
+    
     for (int j = 0; j < data->subQs->at(data->i).size(); ++j) {
         data->idx->at(data->i * data->chunk_size + j) = subidx[j];
         data->dist->at(data->i * data->chunk_size + j) = subdist[j];
@@ -217,27 +213,25 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector
     cout << num_subQs << endl;
     vector<vector<vector<double>>> subQs(num_subQs);
 
+    // Create threads to split the Q matrix into subQs
     vector<pthread_t> threads(num_subQs);
     vector<ThreadData> thread_data(num_subQs);
-
     for (int i = 0; i < num_subQs; ++i) {
         thread_data[i] = {i, chunk_size, q_points, &Q, &subQs, &idx, &dist, &C, k};
-        cout << "Creating thread " << i << " for sub-queries" << endl;
-        pthread_create(&threads[i], nullptr, thread_func, &thread_data[i]);
+        pthread_create(&threads[i], nullptr, threadSplitQ, &thread_data[i]);
     }
 
     for (int i = 0; i < num_subQs; ++i) {
         pthread_join(threads[i], nullptr);
-        cout << "Joined thread " << i << " for sub-queries" << endl;
     }
 
+    // Create threads to perform k-NN search in parallel
     vector<pthread_t> knn_threads(num_subQs);
     vector<ThreadData> knn_thread_data(num_subQs);
-
     for (int i = 0; i < num_subQs; ++i) {
         knn_thread_data[i] = {i, chunk_size, q_points, &Q, &subQs, &idx, &dist, &C, k};
         cout << "Creating knn thread " << i << endl;
-        pthread_create(&knn_threads[i], nullptr, knn_thread_func, &knn_thread_data[i]);
+        pthread_create(&knn_threads[i], nullptr, threadKnnSearch, &knn_thread_data[i]);
     }
     
     for (int i = 0; i < num_subQs; ++i) {
@@ -406,15 +400,49 @@ int main() {
     int dim = C[0].size();
     int dl = log(cp) / (e*e);
 
-    auto start = chrono::high_resolution_clock::now();
-    auto [idx, dist] = knnSearchParallel(C, Q, k);
-    auto end = chrono::high_resolution_clock::now();
-    chrono::duration<double> elapsed = end - start;
+    if(cp < 1000 && dl >= dim) {
+        auto start = chrono::high_resolution_clock::now();
+        auto [idx, dist] = knnSearchParallel(C, Q, k);
+        auto end = chrono::high_resolution_clock::now();
+        chrono::duration<double> elapsed = end - start;
 
-    cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
+        cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
         
-    exportResults(idx, dist);
-    printResults(idx, dist);
+        exportResults(idx, dist);
+        printResults(idx, dist);
+
+    } else if (cp >= 1000 && dl >= dim) {
+        auto start = chrono::high_resolution_clock::now();
+        dl = sqrt(dim) + 1;
+        //vector<vector<double>> CS, QS;
+        //vector<vector<double>> projections = generateRandomProjections(dim, dl);
+        //CS = projectPoints(C, projections);
+        //QS = projectPoints(Q, projections);
+
+        auto [idx, dist] = knnSearchParallel(C, Q, k);
+        auto end = chrono::high_resolution_clock::now();
+        chrono::duration<double> elapsed = end - start;
+
+        cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
+        
+        exportResults(idx, dist);
+
+    } else {
+        auto start = chrono::high_resolution_clock::now();
+        //vector<vector<double>> CS, QS;
+        //vector<vector<double>> projections = generateRandomProjections(dim, dl);
+        //CS = projectPoints(C, projections);
+        //QS = projectPoints(Q, projections);
+
+        auto [idx, dist] = knnSearchParallel(C, Q, k);
+        auto end = chrono::high_resolution_clock::now();
+        chrono::duration<double> elapsed = end - start;
+
+        cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
+        
+        exportResults(idx, dist);
+
+    }
 
     return 0;
 }
