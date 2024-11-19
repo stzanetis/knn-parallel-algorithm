@@ -206,6 +206,13 @@ pair<vector<vector<int>>, vector<vector<float>>> knnSearchParallel(const vector<
         }
     }
 
+    #pragma omp parallel for
+    for (int i = 0; i < q_points; ++i) {
+        for (int j = 0; j < k; ++j) {
+            idx[i][j] += 1;
+        }
+    }
+
     return {idx, dist};
 }
 

@@ -127,6 +127,12 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearch(const vector<vector<
         }
     }
 
+    for (int i = 0; i < Q.size(); ++i) {
+        for (int j = 0; j < k; ++j) {
+            idx[i][j] += 1;
+        }
+    }
+
     return {idx, dist};
 }
 

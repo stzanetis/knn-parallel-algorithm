@@ -245,6 +245,12 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector
         cout << "Joined knn thread " << i << endl;
     }
 
+    for (int i = 0; i < q_points; ++i) {
+        for (int j = 0; j < k; ++j) {
+            idx[i][j] += 1;
+        }
+    }
+
     return {idx, dist};
 }
 
