@@ -65,8 +65,7 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
 
     // Calculate D^2 using (C^2 - 2C*Q^T + Q^2T)
     D.resize(c_points, vector<double>(q_points));
-    #pragma omp parallel for
-    for (int i =0; i < c_points; i++) {
+    cilk_for (int i =0; i < c_points; i++) {
         for (int j = 0; j < q_points; j++) {
             D[i][j] = CSquared[i] + QSquared[j] - 2 * CQT[i * q_points + j];
             if (D[i][j] < 0) {
@@ -250,7 +249,7 @@ void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
     try {
         // Open the HDF5 file
         string filename;
-        cout << "Enter the filename(file should be located in the test folder): ";
+        cout << "Enter the filename (including .h5 extension, file should be located in the test folder): ";
         cin >> filename;
         H5::H5File file("../../test/" + filename, H5F_ACC_RDONLY);
 
@@ -302,7 +301,7 @@ int main() {
     vector<vector<double>> C, Q;
 
     int option;
-    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect and option: ";
+    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect an option: ";
     cin >> option;
 
     cout << "Enter the value for k nearest neighbors: ";
@@ -377,7 +376,7 @@ int main() {
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double> elapsed = end - start;
 
-        cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
+        cout << "knnSearch took " << elapsed.count() << " seconds." << endl;
         
         exportResults(idx, dist);
 
@@ -387,7 +386,7 @@ int main() {
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double> elapsed = end - start;
 
-        cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
+        cout << "knnSearch took " << elapsed.count() << " seconds." << endl;
         
         exportResults(idx, dist);
 

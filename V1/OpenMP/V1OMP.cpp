@@ -306,7 +306,7 @@ int main() {
     vector<vector<float>> C, Q;
 
     int option;
-    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect and option: ";
+    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect an option: ";
     cin >> option;
 
     cout << "Enter the value for k nearest neighbors: ";

@@ -288,7 +288,7 @@ void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
     try {
         // Open the HDF5 file
         string filename;
-        cout << "Enter the filename(file should be located in the test folder): ";
+        cout << "Enter the filename (located in the test folder): ";
         cin >> filename;
         H5::H5File file("../../test/" + filename, H5F_ACC_RDONLY);
 
@@ -340,7 +340,7 @@ int main() {
     vector<vector<double>> C, Q;
 
     int option;
-    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect and option: ";
+    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect an option: ";
     cin >> option;
 
     cout << "Enter the value for k nearest neighbors: ";

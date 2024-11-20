@@ -45,7 +45,7 @@ void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
     }
 
     // Sort the first k elements
-    sort(point_pairs.begin(), point_pairs.begin() + k, [](const pair<int, float>& a, const pair<int, float>& b) {
+    sort(point_pairs.begin(), point_pairs.begin() + k, [](const pair<int, double>& a, const pair<int, double>& b) {
         return a.second < b.second;
     });
 }
@@ -225,7 +225,7 @@ int main() {
     vector<vector<double>> C, Q;
     
     int option;
-    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect and option: ";
+    cout << "1.Import matrices from .h5 file    2.Random matrices   3.Small matrices for printing\nSelect an option: ";
     cin >> option;
 
     cout << "Enter the value for k nearest neighbors: ";
@@ -292,7 +292,7 @@ int main() {
     auto end = chrono::high_resolution_clock::now();
     chrono::duration<double> elapsed = end - start;
 
-    cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
+    cout << "knnSearch took " << elapsed.count() << " seconds." << endl;
 
     exportResults(idx, dist);
     printResults(idx, dist);
