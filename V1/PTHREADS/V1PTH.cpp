@@ -65,7 +65,6 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     }
 
     // Calculate C^2
-    //#pragma omp parallel for
     for (int i = 0; i < c_points; i++) {
         double sum = 0.0;
         for (int j = 0; j < d; ++j) {
@@ -75,7 +74,6 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
     }
 
     // Calculate Q^2
-    //#pragma omp parallel for
     for (int i = 0; i < q_points; i++) {
         double sum = 0.0;
         for (int j = 0; j < d; ++j) {
@@ -89,7 +87,6 @@ void calculateDistances(const vector<vector<double>>& C, const vector<vector<dou
 
     // Calculate D^2 using (C^2 - 2C*Q^T + Q^2T)
     D.resize(c_points, vector<double>(q_points));
-    //#pragma omp parallel for
     for (int i =0; i < c_points; i++) {
         for (int j = 0; j < q_points; j++) {
             D[i][j] = CSquared[i] + QSquared[j] - 2 * CQT[i * q_points + j];
