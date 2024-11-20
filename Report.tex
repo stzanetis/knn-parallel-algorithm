@@ -1,22 +1,23 @@
 \documentclass[12pt]{report}
 
-% Import packages
-\usepackage{graphicx}  % For including images
-\usepackage{amsmath}   % For advanced math formatting
+\usepackage{graphicx}
+\usepackage{amsmath}
 \usepackage{bm}
-\usepackage{hyperref}  % For creating hyperlinks
-\usepackage{geometry}  % To set page margins
+\usepackage{hyperref}
+\usepackage{geometry}
 \usepackage{helvet}
-\renewcommand{\familydefault}{\sfdefault}  % Makes sans-serif the default font
+
+% Makes sans-serif the default font
+\renewcommand{\familydefault}{\sfdefault}
 \geometry{a4paper, margin=1in}
 
 \begin{document}
 
 \title{\textbf{k Nearest Neighbors - kNN}}
 \author{Savvas Tzanetis}
-\maketitle  % Creates the title
+\maketitle
 
-\tableofcontents  % Generates the table of contents
+\tableofcontents
 
 \chapter{Introduction}
 The k-Nearest Neighbors \textbf{(kNN)} algorithm is a fundamental technique for finding the closest neighbors of a query set \textbf{Q} with respect to a data corpus \textbf{C}. However, its computational complexity becomes prohibitive for large datasets, especially when the corpus and query set have high dimensions. This report presents a parallel implementation of the kNN search algorithm by leveraging parallelism using libraries like \textbf{OpenMP, OpenCILK} and \textbf{PTHREADS} as part of an assignment in the Parallel and distributed systems class of the department of Electrical and computer engineering of the Aristotle unversity of Thessaloniki. This algorithm, implemented in the \textbf{C++} language uses the \textbf{OpenBLAS} library for optimized matrix computations for high dimensional distance calculations and the correctness of the implementation is validated against MATLAB's \textbf{knnsearch}.

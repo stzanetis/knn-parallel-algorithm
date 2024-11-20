@@ -281,7 +281,7 @@ int main() {
             {41.0, 42.0, 4.0, 0.544, 8.0},
             {41.0, 47.0, 8.0, 49.0, 599.0}
         }; 
-    }   else {
+    } else {
         cout << "Invalid option" << endl;
         return 1;
     }

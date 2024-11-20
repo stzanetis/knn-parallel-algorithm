@@ -256,7 +256,7 @@ void importData(vector<vector<float>>& C, vector<vector<float>>& Q) {
         string filename;
         cout << "Enter the filename(file should be located in the test folder): ";
         cin >> filename;
-        H5::H5File file("../../test/" + filename, H5F_ACC_RDONLY);
+        H5::H5File file("../test/" + filename, H5F_ACC_RDONLY);
 
         // Read C dataset
         H5::DataSet datasetC = file.openDataSet("train");
@@ -372,12 +372,21 @@ int main() {
     int qp = Q.size();
     int dim = C[0].size();
     int dl = 3 * (log(cp) / (e*e));
+    cout << "DL: " << dl << endl;
 
-    if((cp > 1000 && qp > 1000) && dl < dim) {
+    if(cp < 1000 && dl >= dim) {
         auto start = omp_get_wtime();
-        vector<vector<float>> CS, QS;
-        randomProjection(C, Q, dl, CS, QS);
-        auto [idx, dist] = knnSearchParallel(CS, QS, k);
+        auto [idx, dist] = knnSearchParallel(C, Q, k);
+        auto end = omp_get_wtime();
+
+        cout << "knnsearch took " << (end - start) << " seconds" << endl;
+        
+        exportResults(idx, dist);
+        printResults(idx, dist);
+
+    } else if (cp >= 1000 && dl >= dim) {
+        auto start = omp_get_wtime();
+        auto [idx, dist] = knnSearchParallel(C, Q, k);
         auto end = omp_get_wtime();
 
         cout << "knnsearch took " << (end - start) << " seconds" << endl;
@@ -385,8 +394,13 @@ int main() {
         exportResults(idx, dist);
 
     } else {
+        cout << "ELSE IS RUNNING" << endl;
         auto start = omp_get_wtime();
-        auto [idx, dist] = knnSearchParallel(C, Q, k);
+        vector<vector<float>> CS, QS;
+        randomProjection(C, Q, dl, CS, QS);
+        cout << "Points projected" << endl;
+
+        auto [idx, dist] = knnSearchParallel(CS, QS, k);
         auto end = omp_get_wtime();
 
         cout << "knnsearch took " << (end - start) << " seconds" << endl;

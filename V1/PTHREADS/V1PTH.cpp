@@ -8,6 +8,7 @@
 #include <ctime>
 #include <chrono>
 #include <algorithm>
+#include <unistd.h>
 
 using namespace std;
 
@@ -131,49 +132,48 @@ void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
     });
 }
 
-vector<vector<double>> generateRandomProjections(int original_dim, int reduced_dim) {
-    vector<vector<double>> projections(reduced_dim, vector<double>(original_dim));
-    for (int i = 0; i < reduced_dim; i++) {
-        for (int j = 0; j < original_dim; ++j) {
-            projections[i][j] = (rand()% 2 == 0 ? -1 : 1) / sqrt((double)reduced_dim);
+void randomProjection(const vector<vector<double>>& C, const vector<vector<double>>& Q, int dl, vector<vector<double>>& CS, vector<vector<double>>& QS) {
+    int c_points = C.size();
+    int q_points = Q.size();
+    int d = C[0].size();
+
+    vector<double> CSTemp(c_points * dl);
+    vector<double> QSTemp(q_points * dl);
+
+    vector<double> CFlat(c_points * d), QFlat(q_points * d);
+    for (int i = 0; i < c_points; ++i) {
+        for (int j = 0; j < d; ++j) {
+            CFlat[i * d + j] = C[i][j];
+        }
+    }
+    for (int i = 0; i < q_points; ++i) {
+        for (int j = 0; j < d; ++j) {
+            QFlat[i * d + j] = Q[i][j];
         }
     }
 
-    return projections;
-}
 
-vector<vector<double>> projectPoints(const vector<vector<double>>& points, const vector<vector<double>>& projections) {
-    int num_points = points.size();
-    int reduced_dim = projections.size();
-    int original_dim = points[0].size();
+    vector<double> projections(dl * d);
+    for (int i = 0; i < dl * d; i++) {
+        projections[i] = (rand()% 2 == 0 ? -1 : 1) / sqrt((double)dl);
+    }
 
-    vector<vector<double>> projected_points(num_points, vector<double>(reduced_dim));
-    vector<double> points_flat(num_points * original_dim);
-    vector<double> projections_flat(reduced_dim * original_dim);
-    vector<double> projected_points_flat(num_points * reduced_dim);
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, c_points, dl, d, 1.0, CFlat.data(), d, projections.data(), dl, 0.0, CSTemp.data(), dl);
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, q_points, dl, d, 1.0, QFlat.data(), d, projections.data(), dl, 0.0, QSTemp.data(), dl);
 
-    for (int i = 0; i < num_points; ++i) {
-        for (int j = 0; j < original_dim; ++j) {
-            points_flat[i * original_dim + j] = points[i][j];
+    CS.resize(c_points, vector<double>(dl));
+    for (int i = 0; i < c_points; ++i) {
+        for (int j = 0; j < dl; ++j) {
+            CS[i][j] = static_cast<float>(CSTemp[i * dl + j]);
         }
     }
 
-    for (int i = 0; i < reduced_dim; ++i) {
-        for (int j = 0; j < original_dim; ++j) {
-            projections_flat[i * original_dim + j] = projections[i][j];
+    QS.resize(q_points, vector<double>(dl));
+    for (int i = 0; i < q_points; ++i) {
+        for (int j = 0; j < dl; ++j) {
+            QS[i][j] = static_cast<float>(QSTemp[i * dl + j]);
         }
     }
-
-    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, num_points, reduced_dim, original_dim, 1.0, points_flat.data(), original_dim, projections_flat.data(), original_dim, 0.0, projected_points_flat.data(), reduced_dim);
-
-    // Convert the flattened result back to a 2D vector
-    for (int i = 0; i < num_points; ++i) {
-        for (int j = 0; j < reduced_dim; ++j) {
-            projected_points[i][j] = projected_points_flat[i * reduced_dim + j];
-        }
-    }
-    
-    return projected_points;
 }
 
 void* threadKnnSearch(void* arg) {
@@ -214,9 +214,9 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector
     vector<vector<int>> idx(q_points, vector<int>(k));
     vector<vector<double>> dist(q_points, vector<double>(k));
 
-    int chunk_size = 1500;
-    int num_subQs = (q_points + (chunk_size - 1)) / chunk_size; // Number of sub-Queries needed
-    cout << num_subQs << endl;
+    long numThreads = sysconf(_SC_NPROCESSORS_ONLN);
+    int num_subQs = numThreads * 0.6 + 1;
+    int chunk_size = (q_points + num_subQs - 1) / num_subQs;
     vector<vector<vector<double>>> subQs(num_subQs);
 
     // Create threads to split the Q matrix into subQs
@@ -236,13 +236,11 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector
     vector<ThreadData> knn_thread_data(num_subQs);
     for (int i = 0; i < num_subQs; ++i) {
         knn_thread_data[i] = {i, chunk_size, q_points, &Q, &subQs, &idx, &dist, &C, k};
-        cout << "Creating knn thread " << i << endl;
         pthread_create(&knn_threads[i], nullptr, threadKnnSearch, &knn_thread_data[i]);
     }
     
     for (int i = 0; i < num_subQs; ++i) {
         pthread_join(knn_threads[i], nullptr);
-        cout << "Joined knn thread " << i << endl;
     }
 
     for (int i = 0; i < q_points; ++i) {
@@ -410,28 +408,13 @@ int main() {
     int cp = C.size();
     int qp = Q.size();
     int dim = C[0].size();
-    int dl = log(cp) / (e*e);
+    int dl = 3 * (log(cp) / (e*e));
 
-    if(cp < 1000 && dl >= dim) {
+    if((cp > 1000 && qp > 1000) && dl < dim) {
         auto start = chrono::high_resolution_clock::now();
-        auto [idx, dist] = knnSearchParallel(C, Q, k);
-        auto end = chrono::high_resolution_clock::now();
-        chrono::duration<double> elapsed = end - start;
-
-        cout << "knnsearch took " << elapsed.count() << " seconds." << endl;
-        
-        exportResults(idx, dist);
-        printResults(idx, dist);
-
-    } else if (cp >= 1000 && dl >= dim) {
-        auto start = chrono::high_resolution_clock::now();
-        dl = sqrt(dim) + 1;
-        //vector<vector<double>> CS, QS;
-        //vector<vector<double>> projections = generateRandomProjections(dim, dl);
-        //CS = projectPoints(C, projections);
-        //QS = projectPoints(Q, projections);
-
-        auto [idx, dist] = knnSearchParallel(C, Q, k);
+        vector<vector<double>> CS, QS;
+        randomProjection(C, Q, dl, CS, QS);
+        auto [idx, dist] = knnSearchParallel(CS, QS, k);
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double> elapsed = end - start;
 
@@ -441,11 +424,6 @@ int main() {
 
     } else {
         auto start = chrono::high_resolution_clock::now();
-        //vector<vector<double>> CS, QS;
-        //vector<vector<double>> projections = generateRandomProjections(dim, dl);
-        //CS = projectPoints(C, projections);
-        //QS = projectPoints(Q, projections);
-
         auto [idx, dist] = knnSearchParallel(C, Q, k);
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double> elapsed = end - start;

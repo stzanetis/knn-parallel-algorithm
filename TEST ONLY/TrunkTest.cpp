@@ -6,6 +6,7 @@
 #include <random>
 #include <H5Cpp.h>
 #include <ctime>
+#include <algorithm>
 
 using namespace std;
 
@@ -14,42 +15,57 @@ void matrixTruncation(const vector<vector<double>>& C, int m, vector<vector<doub
     int d = C[0].size();
 
     CT.resize(m, vector<double>(d));
+
     srand(time(0));
     int idx = rand() % c;
     CT[0] = C[idx];
 
-    vector<double> minDist(c, 1e9);
+    vector<double> distances(c, 0.0);
 
+    #pragma omp parallel for
     for (int i = 0; i < c; i++) {
-        double dist = 0;
+        double dist = 0.0;
         for (int j = 0; j < d; j++) {
             double diff = C[i][j] - CT[0][j];
             dist += diff * diff;
         }
-        minDist[i] = dist;
+        distances[i] = dist;
     }
 
     for (int i = 1; i < m; i++) {
-        double maxDist = -1.0;
-        int maxIdx = -1;
+        double total_dist = 0.0;
 
+        #pragma omp parallel for reduction(+:total_dist)
+        for (int j = 0; j < c; j++) {
+            total_dist += distances[j];
+        }
+
+        double rand_dist = (double)rand() / RAND_MAX * total_dist;
+        double cumulative_dist = 0.0;
+        int next_idx = 0;
+
+        for (int j = 0; j < c; j++) {
+            cumulative_dist += distances[j];
+            if (cumulative_dist >= rand_dist) {
+                next_idx = j;
+                break;
+            }
+        }
+
+        CT[i] = C[next_idx];
+
+        #pragma omp parallel for
         for (int j = 0; j < c; j++) {
             double dist = 0.0;
             for (int k = 0; k < d; k++) {
-                double diff = C[j][k] - CT[i - 1][k];
+                double diff = C[j][k] - CT[i][k];
                 dist += diff * diff;
             }
-
-            minDist[j] = min(minDist[j], dist);
-
-            if (minDist[j] > maxDist) {
-                maxDist = minDist[j];
-                maxIdx = j;
+            if (dist < distances[j]) {
+                distances[j] = dist;
             }
         }
-        CT[i] = C[maxIdx];
     }
-
 }
 
 void printResults(const vector<vector<int>>& idx, const vector<vector<double>>& dist) {
@@ -144,6 +160,11 @@ void quickSelect(vector<pair<int,double>>& point_pairs, int k) {
         else if (pivotIndex < k) left = pivotIndex + 1;
         else right = pivotIndex - 1;
     }
+
+    // Sort the first k elements
+    sort(point_pairs.begin(), point_pairs.begin() + k, [](const pair<int, float>& a, const pair<int, float>& b) {
+        return a.second < b.second;
+    });
 }
 
 vector<vector<double>> generateRandomProjections(int original_dim, int reduced_dim) {
@@ -243,6 +264,13 @@ pair<vector<vector<int>>, vector<vector<double>>> knnSearchParallel(const vector
         }
     }
 
+    #pragma omp parallel for
+    for (int i = 0; i < q_points; ++i) {
+        for (int j = 0; j < k; ++j) {
+            idx[i][j] += 1;
+        }
+    }
+
     return {idx, dist};
 }
 
@@ -305,11 +333,13 @@ void importData(vector<vector<double>>& C, vector<vector<double>>& Q) {
             }
         }
 
-        if (C.size() > 60000) {
+        if (C.size() > 100000) {
             vector<vector<double>> CT;
-            int m = (int)(10 * log(C.size())) + C[0].size();
-            cout << "m: " << m << endl;
+            int m = (int)(100 * log(C.size())) + 2*C[0].size();
+            auto start = omp_get_wtime();
             matrixTruncation(C, m, CT);
+            auto end = omp_get_wtime();
+            
             C = CT;
             CT.clear();
             CT.shrink_to_fit();
@@ -416,13 +446,14 @@ int main() {
 
     if(cp < 1000) {
         auto start = omp_get_wtime();
+        cout << "C size: " << C.size() << endl;
         auto [idx, dist] = knnSearchParallel(C, Q, k);
         auto end = omp_get_wtime();
 
         cout << "knnsearch took " << (end - start) << " seconds" << endl;
         
         exportResults(idx, dist);
-        printResults(idx, dist);
+        //printResults(idx, dist);
 
     } else if (cp >= 1000 && dl >= dim) {
         auto start = omp_get_wtime();
@@ -454,7 +485,6 @@ int main() {
         exportResults(idx, dist);
 
     } else if (cp > 60000) {
-        cout << "hello" << endl;
         auto start = omp_get_wtime();
         //int m = (int)(10 * log(cp)) + dim;
         //cout << "m: " << m << endl;
